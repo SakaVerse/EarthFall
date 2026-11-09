@@ -1,0 +1,143 @@
+/**
+ * Earthfall: Beyond the Solar System - Game Types
+ */
+
+export type GameState = 'TITLE' | 'STORY_INTRO' | 'PLAYING' | 'PAUSED' | 'GAME_OVER';
+
+export type ZoneId = 'solar_system' | 'asteroid_belt' | 'dark_nebula' | 'frozen_space' | 'unknown_universe';
+
+export interface ZoneConfig {
+  id: ZoneId;
+  name: string;
+  subtitle: string;
+  minDistance: number;
+  maxDistance: number;
+  bgGradient: [string, string, string]; // Top, Mid, Bottom
+  nebulaColors: string[];
+  ambientColor: string;
+  starColor: string;
+  obstacleMultipliers: {
+    speed: number;
+    density: number;
+    hazardVariety: number;
+  };
+}
+
+export type PowerUpType = 'SHIELD' | 'ENERGY' | 'TIME_CONTROL' | 'COSMIC_BOOST' | 'MAGNET';
+
+export interface PowerUpItem {
+  id: string;
+  type: PowerUpType;
+  x: number;
+  y: number;
+  radius: number;
+  vx: number;
+  vy: number;
+  angle: number;
+  glowColor: string;
+  duration: number; // For active powerups in seconds
+}
+
+export interface ActivePowerUp {
+  type: PowerUpType;
+  durationRemaining: number;
+  maxDuration: number;
+}
+
+export type ObstacleType = 
+  | 'SMALL_ASTEROID'
+  | 'GIANT_ASTEROID'
+  | 'METEOR_SHOWER'
+  | 'COMET'
+  | 'SPACE_DEBRIS'
+  | 'ENERGY_BARRIER'
+  | 'COSMIC_STORM'
+  | 'GRAVITATIONAL_ANOMALY'
+  | 'SOLAR_FLARE'
+  | 'VOID_CRYSTAL'
+  | 'PULSAR_STAR'
+  | 'ALIEN_MINE'
+  | 'COSMIC_LEVIATHAN'
+  | 'ANTIMATTER_VORTEX';
+
+export type SkillType = 'EMP_SHOCKWAVE' | 'PHASE_WARP' | 'RETRO_VENT';
+
+export interface ActiveSkill {
+  type: SkillType;
+  name: string;
+  keyLabel: string;
+  cooldownRemaining: number;
+  maxCooldown: number;
+  isActive: boolean;
+  activeDurationRemaining: number;
+  maxActiveDuration: number;
+}
+
+export interface Obstacle {
+  id: string;
+  type: ObstacleType;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  radius: number;
+  vx: number;
+  vy: number;
+  rotation: number;
+  rotationSpeed: number;
+  health?: number;
+  color: string;
+  glowColor?: string;
+  points?: { x: number; y: number }[]; // For procedural polygon asteroids
+  isTelegraphing?: boolean;
+  telegraphTimer?: number;
+  customData?: any;
+}
+
+export interface CosmicEnergyOrb {
+  id: string;
+  x: number;
+  y: number;
+  radius: number;
+  value: number;
+  glowColor: string;
+  pulseTimer: number;
+  baseY: number;
+  floatOffset: number;
+}
+
+export interface PlayerStats {
+  score: number;
+  distance: number;
+  energyCollected: number;
+  obstaclesDodged: number;
+  maxCombo: number;
+  currentCombo: number;
+  zone: ZoneId;
+}
+
+export interface HighScoreRecord {
+  score: number;
+  distance: number;
+  energy: number;
+  zone: string;
+  date: string;
+}
+
+export interface AudioSettings {
+  masterVolume: number;
+  musicVolume: number;
+  sfxVolume: number;
+  muted: boolean;
+}
+
+export type DeviceType = 'mobile' | 'pc';
+export type ControlMode = 'auto' | 'mobile' | 'pc';
+
+export interface GameSettings {
+  screenShake: boolean;
+  highQualityParticles: boolean;
+  controlMode: ControlMode;
+  touchControlsVisible: boolean;
+  sound: AudioSettings;
+}
