@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { GameEngine } from './game/gameEngine';
-import { ActivePowerUp, ActiveSkill, GameSettings, GameState, PlayerStats, SkillType } from './game/types';
+import { ActivePowerUp, ActiveSkill, GameSettings, GameState, PlayerStats, SkillType, SkinId } from './game/types';
 import { TitleScreen } from './components/TitleScreen';
 import { StoryIntro } from './components/StoryIntro';
 import { HUD } from './components/HUD';
@@ -9,9 +9,14 @@ import { PauseModal } from './components/PauseModal';
 import { HowToPlayModal } from './components/HowToPlayModal';
 import { SettingsModal } from './components/SettingsModal';
 import { TouchControls } from './components/TouchControls';
+import { DailyMissionsModal } from './components/DailyMissionsModal';
+import { SkinShopModal } from './components/SkinShopModal';
 import { soundEngine } from './game/audio';
+import { crazyGames } from './game/crazyGamesSdk';
+import { CosmeticsManager } from './game/cosmetics';
+import { DailyMissionsManager } from './game/dailyMissions';
 import { detectDevice } from './utils/device';
-import { Smartphone, RotateCw } from 'lucide-react';
+import { RotateCw } from 'lucide-react';
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -20,6 +25,9 @@ export default function App() {
   const [gameState, setGameState] = useState<GameState>('TITLE');
   const [showHowToPlay, setShowHowToPlay] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showSkinShop, setShowSkinShop] = useState(false);
+  const [showDailyMissions, setShowDailyMissions] = useState(false);
+  const [hasRevivedThisRun, setHasRevivedThisRun] = useState(false);
 
   // Device Auto-Detection
   const [detectedIsMobile, setDetectedIsMobile] = useState<boolean>(() => detectDevice().isMobile);
@@ -37,6 +45,10 @@ export default function App() {
     zone: 'solar_system',
   });
   const [health, setHealth] = useState(100);
+  const [stamina, setStamina] = useState(100);
+  const [isGrounded, setIsGrounded] = useState(false);
+  const [isGroundHazardActive, setIsGroundHazardActive] = useState(false);
+  const [scrapBalance, setScrapBalance] = useState<number>(() => CosmeticsManager.getScrapBalance());
   const [activePowerUps, setActivePowerUps] = useState<ActivePowerUp[]>([]);
   const [skills, setSkills] = useState<ActiveSkill[]>([]);
   const [bestScore, setBestScore] = useState(0);
@@ -93,19 +105,52 @@ export default function App() {
     const engine = new GameEngine(canvasRef.current);
     engineRef.current = engine;
 
+    // Initialize CrazyGames HTML5 SDK
+    crazyGames.init();
+
     engine.onStateChange = (newState) => {
       setGameState(newState);
+      if (newState === 'PLAYING') {
+        crazyGames.gameplayStart();
+        if (!soundEngine.isMuted()) {
+          soundEngine.startMusic();
+        }
+      } else {
+        crazyGames.gameplayStop();
+      }
       if (newState === 'GAME_OVER') {
         setBestScore(engine.getBestScore());
       }
     };
 
-    engine.onStatsUpdate = (newStats, newHealth, newPowerUps, _zoneBanner, newSkills) => {
+    engine.onStatsUpdate = (
+      newStats,
+      newHealth,
+      newPowerUps,
+      _zoneBanner,
+      newSkills,
+      newStamina,
+      newIsGrounded,
+      newIsHazard,
+      newScrap
+    ) => {
       setStats({ ...newStats });
       setHealth(newHealth);
       setActivePowerUps([...newPowerUps]);
       if (newSkills) {
         setSkills([...newSkills]);
+      }
+      if (typeof newStamina === 'number') {
+        setStamina(newStamina);
+      }
+      if (typeof newIsGrounded === 'boolean') {
+        setIsGrounded(newIsGrounded);
+      }
+      if (typeof newIsHazard === 'boolean') {
+        setIsGroundHazardActive(newIsHazard);
+      }
+      if (typeof newScrap === 'number') {
+        setScrapBalance(newScrap);
       }
     };
 
@@ -135,7 +180,7 @@ export default function App() {
       }
 
       if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
-        if (gameState === 'TITLE' && !showHowToPlay && !showSettings) {
+        if (gameState === 'TITLE' && !showHowToPlay && !showSettings && !showSkinShop && !showDailyMissions) {
           engineRef.current.startGame();
         } else if (gameState === 'PLAYING') {
           engineRef.current.applyJump();
@@ -161,6 +206,10 @@ export default function App() {
           setShowHowToPlay(false);
         } else if (showSettings) {
           setShowSettings(false);
+        } else if (showSkinShop) {
+          setShowSkinShop(false);
+        } else if (showDailyMissions) {
+          setShowDailyMissions(false);
         } else if (gameState === 'PLAYING') {
           engineRef.current.pauseGame();
         } else if (gameState === 'PAUSED') {
@@ -171,7 +220,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [gameState, showHowToPlay, showSettings]);
+  }, [gameState, showHowToPlay, showSettings, showSkinShop, showDailyMissions]);
 
   // Handlers
   const handleTriggerSkill = useCallback((type: SkillType) => {
@@ -181,6 +230,7 @@ export default function App() {
   }, []);
 
   const handleStartGame = useCallback(() => {
+    setHasRevivedThisRun(false);
     if (engineRef.current) {
       engineRef.current.startGame();
     }
@@ -191,6 +241,7 @@ export default function App() {
   }, []);
 
   const handleStoryComplete = useCallback(() => {
+    setHasRevivedThisRun(false);
     if (engineRef.current) {
       engineRef.current.startGame();
     }
@@ -209,9 +260,23 @@ export default function App() {
   }, []);
 
   const handleRestart = useCallback(() => {
-    if (engineRef.current) {
-      engineRef.current.startGame();
-    }
+    setHasRevivedThisRun(false);
+    // Request midgame interstitial ad on restart between game runs
+    crazyGames.requestMidgameAd(() => {
+      if (engineRef.current) {
+        engineRef.current.startGame();
+      }
+    });
+  }, []);
+
+  const handleRevive = useCallback(() => {
+    // Request rewarded video ad to revive Earth
+    crazyGames.requestRewardedAd(() => {
+      setHasRevivedThisRun(true);
+      if (engineRef.current) {
+        engineRef.current.reviveGame();
+      }
+    });
   }, []);
 
   const handleHome = useCallback(() => {
@@ -230,6 +295,11 @@ export default function App() {
         sound: { ...prev.sound, muted: newMuted },
       };
       soundEngine.updateSettings(updated.sound);
+      if (newMuted) {
+        soundEngine.stopMusic();
+      } else {
+        soundEngine.startMusic();
+      }
       return updated;
     });
   }, []);
@@ -241,22 +311,33 @@ export default function App() {
     }
   }, []);
 
+  const handleToggleControlMode = useCallback(() => {
+    setSettings((prev) => {
+      const currentIsMobile =
+        prev.controlMode === 'mobile'
+          ? true
+          : prev.controlMode === 'pc'
+          ? false
+          : detectedIsMobile;
+      const nextMode = currentIsMobile ? 'pc' : 'mobile';
+      return { ...prev, controlMode: nextMode };
+    });
+  }, [detectedIsMobile]);
+
   const handleCanvasTap = useCallback(() => {
-    if (gameState === 'PLAYING' && engineRef.current) {
+    if (!isMobileActive && gameState === 'PLAYING' && engineRef.current) {
       engineRef.current.applyJump();
     }
-  }, [gameState]);
+  }, [gameState, isMobileActive]);
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-black flex items-center justify-center font-display">
       {/* 16:9 Scaled Game Canvas Viewport */}
-      <div
-        className="relative w-full h-full max-w-[177.78vh] max-h-[56.25vw] aspect-video flex items-center justify-center overflow-hidden cosmic-vignette"
-        onClick={handleCanvasTap}
-      >
+      <div className="relative w-full h-full max-w-[177.78vh] max-h-[56.25vw] aspect-video flex items-center justify-center overflow-hidden cosmic-vignette">
         <canvas
           ref={canvasRef}
-          className="w-full h-full block cursor-pointer"
+          className={`w-full h-full block ${isMobileActive ? 'cursor-default' : 'cursor-pointer'}`}
+          onClick={!isMobileActive ? handleCanvasTap : undefined}
         />
 
         {/* PORTRAIT ORIENTATION HELPER FOR MOBILE */}
@@ -274,12 +355,15 @@ export default function App() {
         )}
 
         {/* TITLE SCREEN OVERLAY */}
-        {gameState === 'TITLE' && !showHowToPlay && !showSettings && (
+        {gameState === 'TITLE' && !showHowToPlay && !showSettings && !showSkinShop && !showDailyMissions && (
           <TitleScreen
             onStart={handleStartGame}
             onStory={handleStartStory}
             onHowToPlay={() => setShowHowToPlay(true)}
             onSettings={() => setShowSettings(true)}
+            onOpenShop={() => setShowSkinShop(true)}
+            onOpenMissions={() => setShowDailyMissions(true)}
+            onToggleControlMode={handleToggleControlMode}
             bestScore={bestScore}
             muted={settings.sound.muted}
             onToggleMute={handleToggleMute}
@@ -297,23 +381,29 @@ export default function App() {
           <HUD
             stats={stats}
             health={health}
+            stamina={stamina}
+            isGrounded={isGrounded}
+            isGroundHazardActive={isGroundHazardActive}
+            scrapBalance={scrapBalance}
             activePowerUps={activePowerUps}
             skills={skills}
             bestScore={bestScore}
             muted={settings.sound.muted}
+            isMobile={isMobileActive}
             onPause={handlePause}
             onToggleMute={handleToggleMute}
             onTriggerSkill={handleTriggerSkill}
           />
         )}
 
-        {/* MOBILE ON-SCREEN TOUCH CONTROLS (Rendered when mobile mode is active) */}
+        {/* MOBILE ON-SCREEN TOUCH CONTROLS (Strictly rendered ONLY when mobile mode is active) */}
         {isMobileActive && gameState === 'PLAYING' && (
           <TouchControls
             onJump={() => engineRef.current?.applyJump()}
             onDive={() => engineRef.current?.applyDive()}
             skills={skills}
             onTriggerSkill={handleTriggerSkill}
+            stamina={stamina}
           />
         )}
 
@@ -323,7 +413,9 @@ export default function App() {
             onResume={handleResume}
             onRestart={handleRestart}
             onHome={handleHome}
+            onOpenShop={() => setShowSkinShop(true)}
             muted={settings.sound.muted}
+            isMobile={isMobileActive}
             onToggleMute={handleToggleMute}
           />
         )}
@@ -336,6 +428,8 @@ export default function App() {
             onRestart={handleRestart}
             onHome={handleHome}
             isMobile={isMobileActive}
+            onRevive={handleRevive}
+            canRevive={!hasRevivedThisRun}
           />
         )}
 
@@ -353,6 +447,28 @@ export default function App() {
             }
             onClearHighScores={handleClearHighScores}
             onClose={() => setShowSettings(false)}
+          />
+        )}
+
+        {/* DAILY MISSIONS / DIRECTIVES MODAL */}
+        {showDailyMissions && (
+          <DailyMissionsModal
+            onClose={() => setShowDailyMissions(false)}
+            onClaimReward={() => {
+              setScrapBalance(CosmeticsManager.getScrapBalance());
+              engineRef.current?.refreshCosmetics();
+            }}
+          />
+        )}
+
+        {/* SKIN SHOP & COSMETIC HANGAR MODAL */}
+        {showSkinShop && (
+          <SkinShopModal
+            onClose={() => setShowSkinShop(false)}
+            onSkinEquipped={(_skinId: SkinId) => {
+              setScrapBalance(CosmeticsManager.getScrapBalance());
+              engineRef.current?.refreshCosmetics();
+            }}
           />
         )}
       </div>

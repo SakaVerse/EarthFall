@@ -10,6 +10,8 @@ interface GameOverModalProps {
   onRestart: () => void;
   onHome: () => void;
   isMobile: boolean;
+  onRevive?: () => void;
+  canRevive?: boolean;
 }
 
 export const GameOverModal: React.FC<GameOverModalProps> = ({
@@ -18,6 +20,8 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
   onRestart,
   onHome,
   isMobile,
+  onRevive,
+  canRevive = false,
 }) => {
   const isNewRecord = stats.score >= bestScore && stats.score > 0;
   const zoneConfig = ZONES[stats.zone];
@@ -108,28 +112,43 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
         </div>
 
         {/* Action Buttons */}
-        <div className="w-full flex flex-col sm:flex-row items-center gap-3">
-          <button
-            onClick={() => {
-              soundEngine.playClick();
-              onRestart();
-            }}
-            className="w-full sm:flex-1 flex items-center justify-center gap-2 px-6 py-3.5 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-bold rounded-xl shadow-[0_0_20px_rgba(56,189,248,0.4)] active:scale-95 transition-all text-sm"
-          >
-            <RotateCcw className="w-4 h-4" />
-            <span>{isMobile ? 'PLAY AGAIN' : 'PLAY AGAIN (SPACE)'}</span>
-          </button>
+        <div className="w-full flex flex-col gap-3">
+          {canRevive && onRevive && (
+            <button
+              onClick={() => {
+                soundEngine.playClick();
+                onRevive();
+              }}
+              className="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 font-black rounded-xl shadow-[0_0_25px_rgba(16,185,129,0.5)] active:scale-95 transition-all text-sm tracking-wide"
+            >
+              <Sparkles className="w-4 h-4 fill-slate-950" />
+              <span>REVIVE EARTH (WATCH AD &middot; +60% HP)</span>
+            </button>
+          )}
 
-          <button
-            onClick={() => {
-              soundEngine.playClick();
-              onHome();
-            }}
-            className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-semibold rounded-xl border border-slate-700 transition-colors text-sm"
-          >
-            <Home className="w-4 h-4" />
-            <span>MAIN MENU</span>
-          </button>
+          <div className="w-full flex flex-col sm:flex-row items-center gap-3">
+            <button
+              onClick={() => {
+                soundEngine.playClick();
+                onRestart();
+              }}
+              className="w-full sm:flex-1 flex items-center justify-center gap-2 px-6 py-3.5 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-bold rounded-xl shadow-[0_0_20px_rgba(56,189,248,0.4)] active:scale-95 transition-all text-sm"
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span>{isMobile ? 'PLAY AGAIN' : 'PLAY AGAIN (SPACE)'}</span>
+            </button>
+
+            <button
+              onClick={() => {
+                soundEngine.playClick();
+                onHome();
+              }}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-semibold rounded-xl border border-slate-700 transition-colors text-sm"
+            >
+              <Home className="w-4 h-4" />
+              <span>MAIN MENU</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -11,6 +11,8 @@
  * - Active player skill animations (EMP Shockwave, Phase Warp, Retro-Vent)
  */
 
+import { SkinItem } from './types';
+
 interface EarthRenderOptions {
   x: number;
   y: number;
@@ -25,6 +27,7 @@ interface EarthRenderOptions {
   isPhasing: boolean; // From Phase Warp skill
   isHitFlash: boolean;
   time: number;
+  skin?: SkinItem;
 }
 
 // Detailed continental clusters [lon (-180..180), lat (-90..90), rx, ry, type, rotation]
@@ -114,6 +117,7 @@ export function renderEarth(ctx: CanvasRenderingContext2D, opts: EarthRenderOpti
     isPhasing,
     isHitFlash,
     time,
+    skin,
   } = opts;
 
   ctx.save();
@@ -124,21 +128,26 @@ export function renderEarth(ctx: CanvasRenderingContext2D, opts: EarthRenderOpti
     ctx.save();
     ctx.globalAlpha = 0.4;
     ctx.translate(-14, 0);
-    drawBaseEarth(ctx, radius, rotation, cloudRotation, health, isHitFlash, time, true);
+    drawBaseEarth(ctx, radius, rotation, cloudRotation, health, isHitFlash, time, true, skin);
     ctx.restore();
 
     ctx.save();
     ctx.globalAlpha = 0.65;
     ctx.translate(-7, 0);
-    drawBaseEarth(ctx, radius, rotation, cloudRotation, health, isHitFlash, time, true);
+    drawBaseEarth(ctx, radius, rotation, cloudRotation, health, isHitFlash, time, true, skin);
     ctx.restore();
   }
 
   // Tilt based on vertical ascent/dive velocity
   ctx.rotate(verticalTilt * 0.15);
 
+  // Planetary Ring (Back Half)
+  if (skin && skin.ringStyle && skin.ringStyle !== 'none') {
+    drawPlanetaryRingBack(ctx, radius, skin);
+  }
+
   // 1. RAYLEIGH ATMOSPHERIC CORONA GLOW (Outer Space)
-  drawAtmosphericScattering(ctx, radius, isBoosted);
+  drawAtmosphericScattering(ctx, radius, isBoosted, skin);
 
   // 2. ORBITING MOON (Behind Earth when z < 0)
   const moonOrbitRx = radius * 2.1;
@@ -153,7 +162,12 @@ export function renderEarth(ctx: CanvasRenderingContext2D, opts: EarthRenderOpti
   }
 
   // 3. EARTH PLANETARY SPHERE
-  drawBaseEarth(ctx, radius, rotation, cloudRotation, health, isHitFlash, time, false);
+  drawBaseEarth(ctx, radius, rotation, cloudRotation, health, isHitFlash, time, false, skin);
+
+  // Planetary Ring (Front Half)
+  if (skin && skin.ringStyle && skin.ringStyle !== 'none') {
+    drawPlanetaryRingFront(ctx, radius, skin);
+  }
 
   // 4. ORBITING MOON (In Front of Earth when z > 0)
   if (isMoonFront) {
@@ -174,7 +188,36 @@ export function renderEarth(ctx: CanvasRenderingContext2D, opts: EarthRenderOpti
   ctx.restore();
 }
 
-function drawAtmosphericScattering(ctx: CanvasRenderingContext2D, radius: number, isBoosted: boolean) {
+function drawPlanetaryRingBack(ctx: CanvasRenderingContext2D, radius: number, skin: SkinItem) {
+  ctx.save();
+  ctx.rotate(-0.35);
+  ctx.beginPath();
+  // Draw top arc (behind planet)
+  ctx.ellipse(0, 0, radius * 1.85, radius * 0.55, 0, Math.PI, Math.PI * 2);
+  ctx.lineWidth = skin.ringStyle === 'energy' ? 6 : skin.ringStyle === 'cyber' ? 5 : 8;
+  ctx.strokeStyle = skin.glowColor || 'rgba(56, 189, 248, 0.4)';
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawPlanetaryRingFront(ctx: CanvasRenderingContext2D, radius: number, skin: SkinItem) {
+  ctx.save();
+  ctx.rotate(-0.35);
+  ctx.beginPath();
+  // Draw bottom arc (in front of planet)
+  ctx.ellipse(0, 0, radius * 1.85, radius * 0.55, 0, 0, Math.PI);
+  ctx.lineWidth = skin.ringStyle === 'energy' ? 6 : skin.ringStyle === 'cyber' ? 5 : 8;
+  ctx.strokeStyle = skin.glowColor || 'rgba(56, 189, 248, 0.4)';
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawAtmosphericScattering(
+  ctx: CanvasRenderingContext2D,
+  radius: number,
+  isBoosted: boolean,
+  skin?: SkinItem
+) {
   const outerR = radius * 1.55;
   const grad = ctx.createRadialGradient(
     -radius * 0.35,
@@ -189,6 +232,10 @@ function drawAtmosphericScattering(ctx: CanvasRenderingContext2D, radius: number
     grad.addColorStop(0, 'rgba(251, 191, 36, 0.45)');
     grad.addColorStop(0.5, 'rgba(245, 158, 11, 0.18)');
     grad.addColorStop(1, 'rgba(245, 158, 11, 0)');
+  } else if (skin) {
+    grad.addColorStop(0, skin.glowColor || 'rgba(125, 211, 252, 0.55)');
+    grad.addColorStop(0.5, skin.atmosphereColor ? `${skin.atmosphereColor}44` : 'rgba(56, 189, 248, 0.3)');
+    grad.addColorStop(1, 'rgba(15, 23, 42, 0)');
   } else {
     // Beautiful Rayleigh azure scattering
     grad.addColorStop(0, 'rgba(125, 211, 252, 0.55)');
@@ -211,7 +258,8 @@ function drawBaseEarth(
   health: number,
   isHitFlash: boolean,
   time: number,
-  isGhost: boolean
+  isGhost: boolean,
+  skin?: SkinItem
 ) {
   ctx.save();
   ctx.beginPath();
@@ -227,11 +275,17 @@ function drawBaseEarth(
     radius * 0.2,
     radius * 1.05
   );
-  // Specular sunlit azure to deep oceanic trenches
-  oceanGrad.addColorStop(0, '#0284c7'); // Sunlit tropical blue
-  oceanGrad.addColorStop(0.35, '#0369a1'); // Mid oceanic basin
-  oceanGrad.addColorStop(0.7, '#075985'); // Abyssal plain
-  oceanGrad.addColorStop(1, '#082f49'); // Deep sea trench
+  if (skin && skin.oceanColor) {
+    oceanGrad.addColorStop(0, skin.oceanColor);
+    oceanGrad.addColorStop(0.5, skin.oceanColor);
+    oceanGrad.addColorStop(1, '#050510');
+  } else {
+    // Specular sunlit azure to deep oceanic trenches
+    oceanGrad.addColorStop(0, '#0284c7'); // Sunlit tropical blue
+    oceanGrad.addColorStop(0.35, '#0369a1'); // Mid oceanic basin
+    oceanGrad.addColorStop(0.7, '#075985'); // Abyssal plain
+    oceanGrad.addColorStop(1, '#082f49'); // Deep sea trench
+  }
 
   ctx.fillStyle = oceanGrad;
   ctx.fill();
@@ -267,7 +321,9 @@ function drawBaseEarth(
       }
 
       // B. Landmass Core Palette
-      if (land.type === 2) {
+      if (skin && skin.continentColor) {
+        ctx.fillStyle = land.type === 2 ? '#f8fafc' : skin.continentColor;
+      } else if (land.type === 2) {
         // Polar Ice Cap
         ctx.fillStyle = '#f8fafc';
       } else if (land.type === 1) {

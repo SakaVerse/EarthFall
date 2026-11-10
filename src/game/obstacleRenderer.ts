@@ -3,13 +3,14 @@
  * Renders procedural asteroids, comets, space debris, lasers, black holes, and powerups.
  */
 
-import { CosmicEnergyOrb, Obstacle, PowerUpItem } from './types';
+import { CosmicEnergyOrb, Obstacle, PowerUpItem, ThemeId } from './types';
 import { POWER_UP_CONFIG } from './constants';
 
 export function renderObstacle(
   ctx: CanvasRenderingContext2D,
   obs: Obstacle,
-  time: number
+  time: number,
+  theme?: ThemeId
 ) {
   // If telegraphing warning (e.g. for incoming high-speed meteors/comets)
   if (obs.isTelegraphing) {
@@ -23,10 +24,10 @@ export function renderObstacle(
 
   switch (obs.type) {
     case 'SMALL_ASTEROID':
-      renderSmallAsteroid(ctx, obs);
+      renderSmallAsteroid(ctx, obs, theme);
       break;
     case 'GIANT_ASTEROID':
-      renderGiantAsteroid(ctx, obs, time);
+      renderGiantAsteroid(ctx, obs, time, theme);
       break;
     case 'METEOR_SHOWER':
       renderMeteor(ctx, obs, time);
@@ -92,7 +93,7 @@ function renderTelegraph(ctx: CanvasRenderingContext2D, obs: Obstacle, time: num
   ctx.restore();
 }
 
-function renderSmallAsteroid(ctx: CanvasRenderingContext2D, obs: Obstacle) {
+function renderSmallAsteroid(ctx: CanvasRenderingContext2D, obs: Obstacle, theme?: ThemeId) {
   const r = obs.radius;
   ctx.save();
 
@@ -106,19 +107,37 @@ function renderSmallAsteroid(ctx: CanvasRenderingContext2D, obs: Obstacle) {
     ctx.closePath();
 
     const grad = ctx.createRadialGradient(-r * 0.3, -r * 0.3, 2, 0, 0, r);
-    grad.addColorStop(0, '#a8a29e');
-    grad.addColorStop(0.6, '#78716c');
-    grad.addColorStop(1, '#292524');
+    if (theme === 'glacial') {
+      grad.addColorStop(0, '#e0f2fe');
+      grad.addColorStop(0.6, '#38bdf8');
+      grad.addColorStop(1, '#0369a1');
+    } else if (theme === 'solar') {
+      grad.addColorStop(0, '#fef08a');
+      grad.addColorStop(0.6, '#f97316');
+      grad.addColorStop(1, '#7f1d1d');
+    } else if (theme === 'cyberpunk') {
+      grad.addColorStop(0, '#06b6d4');
+      grad.addColorStop(0.6, '#0f172a');
+      grad.addColorStop(1, '#020617');
+    } else if (theme === 'void') {
+      grad.addColorStop(0, '#e879f9');
+      grad.addColorStop(0.6, '#6b21a8');
+      grad.addColorStop(1, '#1e1b4b');
+    } else {
+      grad.addColorStop(0, '#a8a29e');
+      grad.addColorStop(0.6, '#78716c');
+      grad.addColorStop(1, '#292524');
+    }
 
     ctx.fillStyle = grad;
     ctx.fill();
 
-    ctx.strokeStyle = '#d6d3d1';
+    ctx.strokeStyle = theme === 'cyberpunk' ? '#f43f5e' : theme === 'solar' ? '#fbbf24' : theme === 'glacial' ? '#bae6fd' : theme === 'void' ? '#c084fc' : '#d6d3d1';
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
     // Minor craters
-    ctx.fillStyle = '#44403c';
+    ctx.fillStyle = theme === 'solar' ? '#b45309' : theme === 'glacial' ? '#0284c7' : '#44403c';
     ctx.beginPath();
     ctx.arc(-r * 0.25, -r * 0.15, r * 0.2, 0, Math.PI * 2);
     ctx.arc(r * 0.2, r * 0.25, r * 0.16, 0, Math.PI * 2);
@@ -128,7 +147,7 @@ function renderSmallAsteroid(ctx: CanvasRenderingContext2D, obs: Obstacle) {
   ctx.restore();
 }
 
-function renderGiantAsteroid(ctx: CanvasRenderingContext2D, obs: Obstacle, time: number) {
+function renderGiantAsteroid(ctx: CanvasRenderingContext2D, obs: Obstacle, time: number, theme?: ThemeId) {
   const r = obs.radius;
   ctx.save();
 
@@ -141,20 +160,37 @@ function renderGiantAsteroid(ctx: CanvasRenderingContext2D, obs: Obstacle, time:
     ctx.closePath();
 
     const grad = ctx.createRadialGradient(-r * 0.35, -r * 0.35, 5, 0, 0, r);
-    grad.addColorStop(0, '#78716c');
-    grad.addColorStop(0.5, '#44403c');
-    grad.addColorStop(1, '#1c1917');
+    if (theme === 'glacial') {
+      grad.addColorStop(0, '#f0f9ff');
+      grad.addColorStop(0.5, '#0284c7');
+      grad.addColorStop(1, '#082f49');
+    } else if (theme === 'solar') {
+      grad.addColorStop(0, '#fef08a');
+      grad.addColorStop(0.5, '#ea580c');
+      grad.addColorStop(1, '#450a0a');
+    } else if (theme === 'cyberpunk') {
+      grad.addColorStop(0, '#ec4899');
+      grad.addColorStop(0.5, '#1e1b4b');
+      grad.addColorStop(1, '#020617');
+    } else if (theme === 'void') {
+      grad.addColorStop(0, '#f0abfc');
+      grad.addColorStop(0.5, '#581c87');
+      grad.addColorStop(1, '#0f051d');
+    } else {
+      grad.addColorStop(0, '#78716c');
+      grad.addColorStop(0.5, '#44403c');
+      grad.addColorStop(1, '#1c1917');
+    }
 
     ctx.fillStyle = grad;
     ctx.fill();
 
-    ctx.strokeStyle = '#a8a29e';
+    ctx.strokeStyle = theme === 'cyberpunk' ? '#06b6d4' : theme === 'solar' ? '#f59e0b' : theme === 'glacial' ? '#7dd3fc' : theme === 'void' ? '#d8b4fe' : '#a8a29e';
     ctx.lineWidth = 2.5;
     ctx.stroke();
-
     // Glowing magma/crystal fissure cracks
     ctx.save();
-    ctx.strokeStyle = 'rgba(249, 115, 22, 0.85)';
+    ctx.strokeStyle = theme === 'cyberpunk' ? 'rgba(6, 182, 212, 0.85)' : theme === 'glacial' ? 'rgba(56, 189, 248, 0.85)' : theme === 'void' ? 'rgba(232, 121, 249, 0.85)' : 'rgba(249, 115, 22, 0.85)';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(-r * 0.5, -r * 0.2);

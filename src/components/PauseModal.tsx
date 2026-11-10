@@ -1,12 +1,14 @@
 import React, { useEffect } from 'react';
-import { Play, RotateCcw, Home, Volume2, VolumeX } from 'lucide-react';
+import { Play, RotateCcw, Home, Volume2, VolumeX, ShoppingBag } from 'lucide-react';
 import { soundEngine } from '../game/audio';
 
 interface PauseModalProps {
   onResume: () => void;
   onRestart: () => void;
   onHome: () => void;
+  onOpenShop?: () => void;
   muted: boolean;
+  isMobile?: boolean;
   onToggleMute: () => void;
 }
 
@@ -14,7 +16,9 @@ export const PauseModal: React.FC<PauseModalProps> = ({
   onResume,
   onRestart,
   onHome,
+  onOpenShop,
   muted,
+  isMobile = false,
   onToggleMute,
 }) => {
   useEffect(() => {
@@ -48,7 +52,7 @@ export const PauseModal: React.FC<PauseModalProps> = ({
             className="w-full flex items-center justify-center gap-2 py-3.5 bg-sky-500 hover:bg-sky-400 text-white font-bold rounded-xl shadow-[0_0_20px_rgba(56,189,248,0.3)] transition-colors text-sm"
           >
             <Play className="w-4 h-4 fill-current" />
-            <span>RESUME (ESC)</span>
+            <span>{isMobile ? 'RESUME FLIGHT' : 'RESUME (ESC)'}</span>
           </button>
 
           <button
@@ -61,6 +65,19 @@ export const PauseModal: React.FC<PauseModalProps> = ({
             <RotateCcw className="w-4 h-4" />
             <span>RESTART FLIGHT</span>
           </button>
+
+          {onOpenShop && (
+            <button
+              onClick={() => {
+                soundEngine.playClick();
+                onOpenShop();
+              }}
+              className="w-full flex items-center justify-center gap-2 py-3 bg-amber-950/40 hover:bg-amber-900/50 text-amber-300 hover:text-white font-semibold rounded-xl border border-amber-500/40 transition-colors text-sm"
+            >
+              <ShoppingBag className="w-4 h-4 text-amber-400" />
+              <span>COSMETIC HANGAR</span>
+            </button>
+          )}
 
           <button
             onClick={() => {

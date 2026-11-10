@@ -114,6 +114,51 @@ export interface PlayerStats {
   maxCombo: number;
   currentCombo: number;
   zone: ZoneId;
+  scrapCollected?: number;
+}
+
+export type ThemeId = 'default' | 'solar' | 'cyberpunk' | 'void' | 'glacial';
+
+export type SkinTier = 'common' | 'rare' | 'legendary';
+
+export type SkinId =
+  | 'earth_classic'
+  | 'mars_terraformed'
+  | 'toxic_venus'
+  | 'frozen_europa'
+  | 'solar_corona'
+  | 'bioluminescent_gaia'
+  | 'dyson_core'
+  | 'dark_matter_void'
+  | 'cyberpunk_matrix';
+
+export interface SkinItem {
+  id: SkinId;
+  name: string;
+  tier: SkinTier;
+  price: number;
+  description: string;
+  themeId: ThemeId;
+  atmosphereColor: string;
+  glowColor: string;
+  trailColor: string;
+  oceanColor: string;
+  continentColor: string;
+  cloudColor: string;
+  auroraColor: string;
+  ringStyle?: 'none' | 'saturn' | 'cyber' | 'energy';
+}
+
+export interface DailyMission {
+  id: string;
+  title: string;
+  description: string;
+  targetType: 'energy' | 'dodge' | 'distance' | 'skills' | 'combo';
+  targetCount: number;
+  currentCount: number;
+  reward: number;
+  completed: boolean;
+  claimed: boolean;
 }
 
 export interface HighScoreRecord {

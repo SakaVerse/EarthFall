@@ -29,7 +29,9 @@ import {
   PlayerStats,
   PowerUpItem,
   PowerUpType,
+  SkinItem,
   SkillType,
+  ThemeId,
   ZoneId,
 } from './types';
 import { soundEngine } from './audio';
@@ -37,6 +39,8 @@ import { renderEarth } from './earthRenderer';
 import { ParticleSystem } from './particleSystem';
 import { SpaceRenderer } from './spaceRenderer';
 import { renderCosmicOrb, renderObstacle, renderPowerUp } from './obstacleRenderer';
+import { CosmeticsManager } from './cosmetics';
+import { DailyMissionsManager } from './dailyMissions';
 
 const HIGH_SCORE_KEY = 'earthfall_high_scores';
 
@@ -51,11 +55,30 @@ export class GameEngine {
     health: number,
     activePowerUps: ActivePowerUp[],
     zoneBanner: string | null,
-    skills: ActiveSkill[]
+    skills: ActiveSkill[],
+    stamina: number,
+    isGrounded: boolean,
+    isGroundHazardActive: boolean,
+    scrapBalance: number
   ) => void;
 
   // Active Skills Map
   public skills: Map<SkillType, ActiveSkill> = new Map();
+
+  // Stamina system (prevents infinite air floating / roof camping)
+  public earthStamina = 100;
+  public maxStamina = 100;
+  public readonly JUMP_STAMINA_COST = 22;
+
+  // Ground anti-cheat (prevents floor sliding cheat)
+  public groundContactTimer = 0;
+  public isGrounded = false;
+  public isGroundHazardActive = false;
+  private groundWarningSfxCooldown = 0;
+
+  // Theme & Skin Cache
+  public equippedSkin: SkinItem = CosmeticsManager.getEquippedSkin();
+  public equippedTheme: ThemeId = CosmeticsManager.getEquippedTheme();
 
   // Player physics
   public earthX = CANVAS_VIRTUAL_WIDTH * HORIZONTAL_POSITION_RATIO;
@@ -136,6 +159,11 @@ export class GameEngine {
     this.earthY = CANVAS_VIRTUAL_HEIGHT / 2;
     this.earthVy = 0;
     this.earthHealth = MAX_HEALTH;
+    this.earthStamina = this.maxStamina;
+    this.groundContactTimer = 0;
+    this.isGrounded = false;
+    this.isGroundHazardActive = false;
+    this.refreshCosmetics();
     this.earthRotation = 0;
     this.earthCloudRotation = 0;
     this.invincibilityTimer = 0;
@@ -320,18 +348,56 @@ export class GameEngine {
     if (this.onStateChange) this.onStateChange(this.state);
   }
 
+  public reviveGame() {
+    this.earthHealth = 60;
+    this.invincibilityTimer = 3.5;
+    this.state = 'PLAYING';
+    this.lastTime = performance.now();
+    soundEngine.startMusic(128);
+    // Clear obstacles within 400px of Earth to give safe space
+    this.obstacles = this.obstacles.filter(
+      (obs) => obs.x > this.earthX + 400 || obs.x < this.earthX - 100
+    );
+    this.particles.emitEmpBlast(this.earthX, this.earthY);
+    if (this.onStateChange) this.onStateChange(this.state);
+  }
+
+  public refreshCosmetics() {
+    this.equippedSkin = CosmeticsManager.getEquippedSkin();
+    this.equippedTheme = CosmeticsManager.getEquippedTheme();
+  }
+
   // CONTROLS
   public applyJump() {
     if (this.state !== 'PLAYING') return;
+
+    // Roof/Ceiling trap prevention: Disallow jump if already at the ceiling
+    const minY = EARTH_RADIUS + 10;
+    if (this.earthY <= minY + 6) {
+      soundEngine.playCeilingBounce();
+      return;
+    }
+
+    // Jumping Stamina check: Cannot jump if stamina is depleted!
+    if (this.earthStamina < this.JUMP_STAMINA_COST * 0.7) {
+      soundEngine.playStaminaExhausted();
+      return;
+    }
+
+    // Deduct stamina per jump
+    this.earthStamina = Math.max(0, this.earthStamina - this.JUMP_STAMINA_COST);
+
     this.earthVy = JUMP_IMPULSE;
-    this.particles.emitThrusterWake(this.earthX, this.earthY, this.hasPowerUp('COSMIC_BOOST'));
+    const trailColor = this.equippedSkin?.trailColor;
+    this.particles.emitThrusterWake(this.earthX, this.earthY, this.hasPowerUp('COSMIC_BOOST'), trailColor);
     soundEngine.playJump();
   }
 
   public applyDive() {
     if (this.state !== 'PLAYING') return;
     this.earthVy = DIVE_IMPULSE;
-    this.particles.emitThrusterWake(this.earthX, this.earthY, this.hasPowerUp('COSMIC_BOOST'));
+    const trailColor = this.equippedSkin?.trailColor;
+    this.particles.emitThrusterWake(this.earthX, this.earthY, this.hasPowerUp('COSMIC_BOOST'), trailColor);
     soundEngine.playDive();
   }
 
@@ -339,6 +405,7 @@ export class GameEngine {
     if (type === 'EMP_SHOCKWAVE') this.triggerEmpShockwave();
     else if (type === 'PHASE_WARP') this.triggerPhaseWarp();
     else if (type === 'RETRO_VENT') this.triggerRetroVent();
+    DailyMissionsManager.recordProgress('skills', 1);
   }
 
   public getSkills(): ActiveSkill[] {
@@ -442,17 +509,23 @@ export class GameEngine {
 
     // Distance & Score Increment
     const scoreMult = hasBoost ? 3 : 1;
-    this.stats.distance += (this.gameSpeed * dt) / 10;
+    const distDelta = (this.gameSpeed * dt) / 10;
+    this.stats.distance += distDelta;
     this.stats.score += Math.round(this.gameSpeed * dt * 0.1 * scoreMult);
+    DailyMissionsManager.recordProgress('distance', Math.round(distDelta));
 
-    // Inform UI with active skills
+    // Inform UI with active skills, stamina, and scrap
     if (this.onStatsUpdate) {
       this.onStatsUpdate(
         this.stats,
         this.earthHealth,
         Array.from(this.activePowerUps.values()),
         this.zoneBanner,
-        Array.from(this.skills.values())
+        Array.from(this.skills.values()),
+        this.earthStamina,
+        this.isGrounded,
+        this.isGroundHazardActive,
+        CosmeticsManager.getScrapBalance()
       );
     }
   }
@@ -463,16 +536,57 @@ export class GameEngine {
     this.earthVy = Math.max(MAX_RISE_SPEED, Math.min(MAX_FALL_SPEED, this.earthVy));
     this.earthY += this.earthVy * dt;
 
-    // Keep within bounds with bouncy dampening
+    // Solid collision bounds
     const minY = EARTH_RADIUS + 10;
     const maxY = CANVAS_VIRTUAL_HEIGHT - EARTH_RADIUS - 10;
 
-    if (this.earthY < minY) {
+    // ROOF / CEILING TRAP FIX:
+    // If player hits the upper ceiling, immediately cancel upward momentum
+    // and push downward so they drop smoothly back into the flight corridor!
+    if (this.earthY <= minY) {
       this.earthY = minY;
-      this.earthVy = 0;
-    } else if (this.earthY > maxY) {
+      this.earthVy = 160; // Downward gravity impulse
+      this.particles.emitExplosion(this.earthX, minY, '#38bdf8', 4);
+    }
+
+    // GROUND CONTACT & ANTI-CHEATING FLOOR HAZARD:
+    const isTouchingFloor = this.earthY >= maxY - 3;
+    this.isGrounded = isTouchingFloor;
+
+    if (isTouchingFloor) {
       this.earthY = maxY;
-      this.earthVy = -this.earthVy * 0.3; // Soft bounce off bottom
+      this.earthVy = 0;
+
+      // STAMINA REFILL:
+      // Auto-refills continuously when Earth touches the ground until completely full
+      this.earthStamina = Math.min(this.maxStamina, this.earthStamina + dt * 80);
+
+      // GROUND HUGGING ANTI-CHEAT:
+      // If player rides the floor without jumping for > 1.1s, friction burn damages Earth
+      this.groundContactTimer += dt;
+      if (this.groundContactTimer > 1.1) {
+        this.isGroundHazardActive = true;
+        this.earthHealth -= 14 * dt;
+        this.particles.emitGroundSparks(this.earthX, maxY);
+
+        this.groundWarningSfxCooldown -= dt;
+        if (this.groundWarningSfxCooldown <= 0) {
+          soundEngine.playGroundWarning();
+          this.groundWarningSfxCooldown = 0.45;
+        }
+
+        if (this.earthHealth <= 0) {
+          this.earthHealth = 0;
+          this.triggerGameOver();
+        }
+      } else {
+        this.isGroundHazardActive = false;
+      }
+    } else {
+      // In mid-air, reset ground contact timer and hazard
+      this.groundContactTimer = 0;
+      this.isGroundHazardActive = false;
+      // In mid-air, stamina does NOT refill (per prompt requirements)
     }
 
     // Invincibility timer
@@ -951,6 +1065,8 @@ export class GameEngine {
         if (this.stats.currentCombo > this.stats.maxCombo) {
           this.stats.maxCombo = this.stats.currentCombo;
         }
+        DailyMissionsManager.recordProgress('dodge', 1);
+        DailyMissionsManager.recordProgress('combo', this.stats.currentCombo);
       }
 
       // Remove off-screen
@@ -986,6 +1102,8 @@ export class GameEngine {
         this.stats.energyCollected++;
         const mult = this.hasPowerUp('COSMIC_BOOST') ? 3 : 1;
         this.stats.score += orb.value * mult;
+        DailyMissionsManager.recordProgress('energy', 1);
+        CosmeticsManager.addScrap(2);
         soundEngine.playEnergyCollect();
         this.particles.emitCollectSparkle(orb.x, orb.y, '#38bdf8', 14);
         this.orbs.splice(i, 1);
@@ -1132,12 +1250,13 @@ export class GameEngine {
     // Clear
     this.ctx.clearRect(0, 0, CANVAS_VIRTUAL_WIDTH, CANVAS_VIRTUAL_HEIGHT);
 
-    // 1. Render Background Space, Nebulae & Parallax
+    // 1. Render Background Space, Nebulae & Parallax with Active Theme
     this.spaceRenderer.render(
       this.ctx,
       this.stats.distance,
       this.stats.zone,
-      this.timeAlive
+      this.timeAlive,
+      this.equippedTheme
     );
 
     // 2. Render Orbs & Power-up Pickups
@@ -1148,15 +1267,15 @@ export class GameEngine {
       renderPowerUp(this.ctx, p, this.timeAlive);
     }
 
-    // 3. Render Obstacles
+    // 3. Render Obstacles with Active Theme
     for (const obs of this.obstacles) {
-      renderObstacle(this.ctx, obs, this.timeAlive);
+      renderObstacle(this.ctx, obs, this.timeAlive, this.equippedTheme);
     }
 
     // 4. Render Particle Effects
     this.particles.render(this.ctx);
 
-    // 5. Render Planet Earth (Player)
+    // 5. Render Planet Earth (Player) with Equipped Skin
     renderEarth(this.ctx, {
       x: this.earthX,
       y: this.earthY,
@@ -1171,7 +1290,32 @@ export class GameEngine {
       isPhasing: this.isPhasingActive(),
       isHitFlash: this.isHitFlash,
       time: this.timeAlive,
+      skin: this.equippedSkin,
     });
+
+    // 6. Floor Anti-Cheat / Ground Hazard Warning Line
+    const floorY = CANVAS_VIRTUAL_HEIGHT - 6;
+    if (this.isGroundHazardActive || this.groundContactTimer > 0.5) {
+      this.ctx.save();
+      const flash = Math.sin(this.timeAlive * 20) > 0;
+      this.ctx.fillStyle = flash ? 'rgba(239, 68, 68, 0.4)' : 'rgba(239, 68, 68, 0.15)';
+      this.ctx.fillRect(0, floorY - 24, CANVAS_VIRTUAL_WIDTH, 30);
+
+      this.ctx.strokeStyle = '#ef4444';
+      this.ctx.lineWidth = 2.5;
+      this.ctx.beginPath();
+      this.ctx.moveTo(0, floorY);
+      this.ctx.lineTo(CANVAS_VIRTUAL_WIDTH, floorY);
+      this.ctx.stroke();
+
+      if (this.isGroundHazardActive) {
+        this.ctx.font = 'bold 12px var(--font-mono)';
+        this.ctx.fillStyle = '#fca5a5';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('⚠ SURFACE FRICTION CRITICAL - JUMP TO ASCEND! ⚠', CANVAS_VIRTUAL_WIDTH / 2, floorY - 8);
+      }
+      this.ctx.restore();
+    }
 
     // 6. Time Control / Chrono Warp Screen Filter
     if (this.hasPowerUp('TIME_CONTROL')) {

@@ -76,71 +76,98 @@ export const HowToPlayModal: React.FC<HowToPlayModalProps> = ({ onClose, isMobil
           {activeTab === 'controls' && (
             <div className="space-y-4">
               {/* Mobile controls section */}
-              <div className={`rounded-xl p-4 border transition-all ${
-                isMobile 
-                  ? 'bg-sky-950/40 border-sky-500/50 shadow-[0_0_15px_rgba(56,189,248,0.15)]'
-                  : 'bg-slate-950/70 border-slate-800/80'
-              }`}>
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-bold text-white text-sm flex items-center gap-2">
-                    <span>📱 Mobile & Touch Controls</span>
-                    {isMobile && <span className="text-[10px] font-mono text-sky-400 uppercase font-bold">(Detected Active)</span>}
-                  </h4>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
-                  <div className="bg-slate-900/80 p-3 rounded-lg border border-slate-800">
-                    <span className="text-sky-300 font-mono font-bold block mb-1">RIGHT THUMB BUTTON</span>
-                    <p className="text-slate-400 text-xs">Fires Earth’s main planetary thrusters to ascend and fly upward.</p>
+              {isMobile ? (
+                <div className="rounded-xl p-4 border bg-sky-950/40 border-sky-500/50 shadow-[0_0_20px_rgba(56,189,248,0.2)]">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-bold text-white text-sm flex items-center gap-2">
+                      <span>📱 Mobile Touch Controls</span>
+                      <span className="text-[10px] font-mono text-sky-400 uppercase font-bold">(Active On This Device)</span>
+                    </h4>
                   </div>
-                  <div className="bg-slate-900/80 p-3 rounded-lg border border-slate-800">
-                    <span className="text-amber-300 font-mono font-bold block mb-1">LEFT THUMB BUTTON</span>
-                    <p className="text-slate-400 text-xs">Triggers quick emergency dive burn to dodge obstacles downward.</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
+                    <div className="bg-slate-900/90 p-3 rounded-xl border border-sky-500/30">
+                      <span className="text-sky-300 font-mono font-bold block mb-1">RIGHT THUMB: THRUST / JUMP</span>
+                      <p className="text-slate-300 text-xs leading-relaxed">
+                        Activates Earth’s atmospheric ion thrusters to fly upward. Costs stamina. A live circular stamina meter encircles the button.
+                      </p>
+                    </div>
+                    <div className="bg-slate-900/90 p-3 rounded-xl border border-amber-500/30">
+                      <span className="text-amber-300 font-mono font-bold block mb-1">LEFT THUMB: DIVE / DESCEND</span>
+                      <p className="text-slate-300 text-xs leading-relaxed">
+                        Fires emergency retro-burn to dive swiftly downward and duck under ceiling barriers and incoming asteroids.
+                      </p>
+                    </div>
+                    <div className="bg-slate-900/90 p-3 rounded-xl border border-slate-700/60 sm:col-span-2">
+                      <span className="text-cyan-300 font-mono font-bold block mb-1">CENTER DOCK: PLANETARY SKILLS</span>
+                      <p className="text-slate-300 text-xs leading-relaxed">
+                        Tap the micro-dock buttons above the controls to trigger Dimensional Warp, EMP Shockwave, and Plasma Vent.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-3 p-2.5 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-xs font-mono">
+                    ⚡ <span className="font-bold text-white">STAMINA TIP:</span> Touching the ground continuously charges your jump stamina back to 100%! Avoid hugging the floor for &gt;1.1s or surface friction will burn Earth’s biosphere.
                   </div>
                 </div>
-                <p className="text-slate-400 text-xs mt-2 italic">
-                  Tip: You can also tap anywhere on the left or right halves of your mobile screen to dive or jump.
-                </p>
-              </div>
+              ) : (
+                /* PC Desktop Keyboard controls section */
+                <div className="rounded-xl p-4 border bg-sky-950/40 border-sky-500/50 shadow-[0_0_20px_rgba(56,189,248,0.2)]">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-bold text-white text-sm flex items-center gap-2">
+                      <span>💻 PC Keyboard & Mouse Controls</span>
+                      <span className="text-[10px] font-mono text-sky-400 uppercase font-bold">(Active On This Device)</span>
+                    </h4>
+                  </div>
 
-              {/* PC Desktop Keyboard controls section */}
-              <div className={`rounded-xl p-4 border transition-all ${
-                !isMobile 
-                  ? 'bg-sky-950/40 border-sky-500/50 shadow-[0_0_15px_rgba(56,189,248,0.15)]'
-                  : 'bg-slate-950/70 border-slate-800/80'
-              }`}>
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-bold text-white text-sm flex items-center gap-2">
-                    <span>💻 PC Desktop Keyboard Controls</span>
-                    {!isMobile && <span className="text-[10px] font-mono text-sky-400 uppercase font-bold">(Detected Active)</span>}
-                  </h4>
-                </div>
+                  <div className="space-y-2.5 mt-2">
+                    <div className="flex items-center justify-between bg-slate-900/90 p-3 rounded-xl border border-slate-800">
+                      <div>
+                        <span className="text-xs font-bold text-white block">Ascend / Ion Thrusters</span>
+                        <span className="text-[11px] text-slate-400">Costs stamina per jump. Recharges on ground touch.</span>
+                      </div>
+                      <div className="flex gap-1.5 font-mono text-xs font-bold text-sky-300">
+                        <span className="bg-slate-800 px-2 py-0.5 rounded border border-slate-700">SPACE</span>
+                        <span className="bg-slate-800 px-2 py-0.5 rounded border border-slate-700">↑</span>
+                        <span className="bg-slate-800 px-2 py-0.5 rounded border border-slate-700">W</span>
+                        <span className="bg-slate-800 px-2 py-0.5 rounded border border-slate-700">CLICK</span>
+                      </div>
+                    </div>
 
-                <div className="space-y-2 mt-2">
-                  <div className="flex items-center justify-between bg-slate-900/80 p-2.5 rounded-lg border border-slate-800">
-                    <span className="text-xs text-slate-300">Ascend / Upward Thrusters</span>
-                    <div className="flex gap-1.5 font-mono text-xs font-bold text-sky-300">
-                      <span className="bg-slate-800 px-2 py-0.5 rounded border border-slate-700">SPACE</span>
-                      <span className="bg-slate-800 px-2 py-0.5 rounded border border-slate-700">↑</span>
-                      <span className="bg-slate-800 px-2 py-0.5 rounded border border-slate-700">W</span>
+                    <div className="flex items-center justify-between bg-slate-900/90 p-3 rounded-xl border border-slate-800">
+                      <div>
+                        <span className="text-xs font-bold text-white block">Emergency Dive / Downward Burn</span>
+                        <span className="text-[11px] text-slate-400">Quick vertical drop to clear overhead obstacles.</span>
+                      </div>
+                      <div className="flex gap-1.5 font-mono text-xs font-bold text-amber-300">
+                        <span className="bg-slate-800 px-2 py-0.5 rounded border border-slate-700">↓</span>
+                        <span className="bg-slate-800 px-2 py-0.5 rounded border border-slate-700">S</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between bg-slate-900/90 p-3 rounded-xl border border-slate-800">
+                      <div>
+                        <span className="text-xs font-bold text-white block">Planetary Skills Hotkeys</span>
+                        <span className="text-[11px] text-slate-400">Warp (Q) · EMP Blast (E) · Retro-Vent (F)</span>
+                      </div>
+                      <div className="flex gap-1.5 font-mono text-xs font-bold text-cyan-300">
+                        <span className="bg-slate-800 px-2 py-0.5 rounded border border-slate-700">Q</span>
+                        <span className="bg-slate-800 px-2 py-0.5 rounded border border-slate-700">E</span>
+                        <span className="bg-slate-800 px-2 py-0.5 rounded border border-slate-700">F</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between bg-slate-900/90 p-3 rounded-xl border border-slate-800">
+                      <span className="text-xs text-slate-300">Pause / Resume Flight</span>
+                      <div className="font-mono text-xs font-bold text-sky-300">
+                        <span className="bg-slate-800 px-2 py-0.5 rounded border border-slate-700">ESC</span>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between bg-slate-900/80 p-2.5 rounded-lg border border-slate-800">
-                    <span className="text-xs text-slate-300">Quick Dive / Downward Dodge</span>
-                    <div className="flex gap-1.5 font-mono text-xs font-bold text-amber-300">
-                      <span className="bg-slate-800 px-2 py-0.5 rounded border border-slate-700">↓</span>
-                      <span className="bg-slate-800 px-2 py-0.5 rounded border border-slate-700">S</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between bg-slate-900/80 p-2.5 rounded-lg border border-slate-800">
-                    <span className="text-xs text-slate-300">Pause / Resume Flight</span>
-                    <div className="font-mono text-xs font-bold text-sky-300">
-                      <span className="bg-slate-800 px-2 py-0.5 rounded border border-slate-700">ESC</span>
-                    </div>
+                  <div className="mt-3 p-2.5 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-xs font-mono">
+                    ⚡ <span className="font-bold text-white">STAMINA TIP:</span> Touching the ground continuously charges your jump stamina back to 100%! Avoid hugging the floor for &gt;1.1s or surface friction will burn Earth’s biosphere.
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
 
