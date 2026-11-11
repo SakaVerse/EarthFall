@@ -750,6 +750,30 @@ class SoundEngine {
       osc.stop(t + idx * 0.06 + 0.3);
     });
   }
+
+  public playNewBest() {
+    this.initContext();
+    if (!this.ctx || !this.sfxGain) return;
+    const t = this.ctx.currentTime;
+
+    // Triumphant rising record fanfare
+    [440, 554.37, 659.25, 880, 1108.73, 1318.51].forEach((freq, idx) => {
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, t + idx * 0.08);
+
+      gain.gain.setValueAtTime(0.22, t + idx * 0.08);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + idx * 0.08 + 0.35);
+
+      osc.connect(gain);
+      gain.connect(this.sfxGain!);
+
+      osc.start(t + idx * 0.08);
+      osc.stop(t + idx * 0.08 + 0.4);
+    });
+  }
 }
 
 export const soundEngine = new SoundEngine();

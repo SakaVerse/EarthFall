@@ -13,6 +13,8 @@ import { DailyMissionsModal } from './components/DailyMissionsModal';
 import { SkinShopModal } from './components/SkinShopModal';
 import { UsernameModal } from './components/UsernameModal';
 import { LeaderboardModal } from './components/LeaderboardModal';
+import { StoryModal } from './components/StoryModal';
+import { NewBestOverlay } from './components/NewBestOverlay';
 import { LeaderboardManager } from './game/leaderboard';
 import { soundEngine } from './game/audio';
 import { CosmeticsManager } from './game/cosmetics';
@@ -32,6 +34,10 @@ export default function App() {
   const [showSkinShop, setShowSkinShop] = useState(false);
   const [showDailyMissions, setShowDailyMissions] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showStoryModal, setShowStoryModal] = useState(false);
+  const [isNewBestAnimating, setIsNewBestAnimating] = useState(false);
+  const [newBestScore, setNewBestScore] = useState(0);
+  const newBestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showUsernamePrompt, setShowUsernamePrompt] = useState<boolean>(() => !LeaderboardManager.getUsername());
   const [usernamePromptError, setUsernamePromptError] = useState<string | null>(null);
 
@@ -124,17 +130,37 @@ export default function App() {
         soundEngine.stopMusic();
       }
       if (newState === 'GAME_OVER') {
-        setBestScore(engine.getBestScore());
+        const runScore = engine.stats.score;
+        const currentBest = engine.getBestScore();
+        const isNewRecord = runScore > currentBest && runScore > 0;
+        const highestScore = Math.max(runScore, currentBest);
+        setBestScore((prev) => Math.max(prev, highestScore));
         setCoinsEarnedThisRun(engine.scrapCollectedThisRun);
-        // Persist real player progress to Firebase Firestore cloud profile
-        CloudService.saveUserProfile({
-          username: LeaderboardManager.getUsername() || 'CosmicPilot',
+
+        // Display celebratory NEW BEST! overlay before Game Over modal appears
+        if (isNewRecord) {
+          setNewBestScore(runScore);
+          setIsNewBestAnimating(true);
+          soundEngine.playNewBest();
+
+          if (newBestTimerRef.current) {
+            clearTimeout(newBestTimerRef.current);
+          }
+          newBestTimerRef.current = setTimeout(() => {
+            setIsNewBestAnimating(false);
+          }, 2400);
+        } else {
+          setIsNewBestAnimating(false);
+        }
+
+        // Auto-persist permanent player profile & progress to Firestore
+        const uid = AuthService.getUserId();
+        CloudService.savePlayerProfile(uid, {
+          bestScore: highestScore,
+          coins: CosmeticsManager.getScrapBalance(),
           scrapBalance: CosmeticsManager.getScrapBalance(),
-          bestScore: engine.getBestScore(),
-          bestDistance: engine.stats.distance,
           unlockedSkins: CosmeticsManager.getUnlockedSkins(),
           unlockedThemes: [CosmeticsManager.getEquippedTheme()],
-          streak: DailyMissionsManager.getStreakData().currentStreak,
         }).catch(() => {});
       }
     };
@@ -183,28 +209,41 @@ export default function App() {
     };
   }, []);
 
-  // Synchronize Cloud Save with Firebase Firestore when logged in
+  // Multi-layer permanent recovery & profile synchronization
   useEffect(() => {
-    const unsub = AuthService.subscribe(async (user) => {
-      if (user && !user.isAnonymous) {
+    const unsub = AuthService.subscribe(async (uid, profile) => {
+      if (uid) {
         try {
-          const profile = await CloudService.loadUserProfile();
           if (profile) {
-            if (typeof profile.scrapBalance === 'number') {
-              const mergedScrap = Math.max(CosmeticsManager.getScrapBalance(), profile.scrapBalance);
-              CosmeticsManager.setScrapBalance(mergedScrap);
-              setScrapBalance(mergedScrap);
-            }
-            if (profile.username && !LeaderboardManager.getUsername()) {
-              LeaderboardManager.setUsername(profile.username);
+            // Automatically load PILOT nickname
+            if (profile.nickname) {
+              LeaderboardManager.setUsername(profile.nickname);
               setShowUsernamePrompt(false);
             }
+            // Automatically load BEST score
+            if (typeof profile.bestScore === 'number' && profile.bestScore > 0) {
+              setBestScore((prev) => Math.max(prev, profile.bestScore || 0));
+            }
+            // Automatically load coins / scrap balance
+            const cloudCoins = profile.scrapBalance ?? profile.coins;
+            if (typeof cloudCoins === 'number') {
+              const merged = Math.max(cloudCoins, CosmeticsManager.getScrapBalance());
+              CosmeticsManager.setScrapBalance(merged);
+              setScrapBalance(merged);
+            }
+            // Automatically load unlocked skins & themes
             if (Array.isArray(profile.unlockedSkins)) {
               CosmeticsManager.syncUnlockedSkins(profile.unlockedSkins as SkinId[]);
             }
+          } else {
+            // Check if nickname can be loaded directly from cloud
+            const nick = await LeaderboardManager.refreshNicknameFromCloud();
+            if (nick) {
+              setShowUsernamePrompt(false);
+            }
           }
         } catch (e) {
-          console.warn('Could not load cloud user profile:', e);
+          console.warn('[App] Auto-recovery profile sync notice:', e);
         }
       }
     });
@@ -271,6 +310,8 @@ export default function App() {
           setShowDailyMissions(false);
         } else if (showLeaderboard) {
           setShowLeaderboard(false);
+        } else if (showStoryModal) {
+          setShowStoryModal(false);
         } else if (gameState === 'PLAYING') {
           engineRef.current.pauseGame();
         } else if (gameState === 'PAUSED') {
@@ -281,7 +322,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [gameState, showHowToPlay, showSettings, showSkinShop, showDailyMissions, showLeaderboard, showUsernamePrompt]);
+  }, [gameState, showHowToPlay, showSettings, showSkinShop, showDailyMissions, showLeaderboard, showStoryModal, showUsernamePrompt]);
 
   // Handlers
   const handleTriggerSkill = useCallback((type: SkillType) => {
@@ -294,14 +335,6 @@ export default function App() {
     const currentUsername = LeaderboardManager.getUsername();
     if (!currentUsername) {
       setUsernamePromptError(null);
-      setShowUsernamePrompt(true);
-      return;
-    }
-
-    // Query Firestore to verify username is not taken by someone else today
-    const isTaken = await LeaderboardManager.isUsernameTakenToday(currentUsername);
-    if (isTaken) {
-      setUsernamePromptError('Username already taken');
       setShowUsernamePrompt(true);
       return;
     }
@@ -334,12 +367,20 @@ export default function App() {
   }, []);
 
   const handleRestart = useCallback(() => {
+    if (newBestTimerRef.current) {
+      clearTimeout(newBestTimerRef.current);
+    }
+    setIsNewBestAnimating(false);
     if (engineRef.current) {
       engineRef.current.startGame();
     }
   }, []);
 
   const handleHome = useCallback(() => {
+    if (newBestTimerRef.current) {
+      clearTimeout(newBestTimerRef.current);
+    }
+    setIsNewBestAnimating(false);
     if (engineRef.current) {
       engineRef.current.resetGame();
       engineRef.current.state = 'TITLE';
@@ -418,12 +459,13 @@ export default function App() {
         )}
 
         {/* TITLE SCREEN OVERLAY */}
-        {gameState === 'TITLE' && !showHowToPlay && !showSettings && !showSkinShop && !showDailyMissions && !showLeaderboard && !showUsernamePrompt && (
+        {gameState === 'TITLE' && !showHowToPlay && !showSettings && !showSkinShop && !showDailyMissions && !showLeaderboard && !showStoryModal && !showUsernamePrompt && (
           <TitleScreen
             onStart={handleStartGame}
             onOpenShop={() => setShowSkinShop(true)}
             onOpenMissions={() => setShowDailyMissions(true)}
             onOpenLeaderboard={() => setShowLeaderboard(true)}
+            onOpenStory={() => setShowStoryModal(true)}
             onSettings={() => setShowSettings(true)}
             bestScore={bestScore}
             muted={settings.sound.muted}
@@ -484,7 +526,21 @@ export default function App() {
         )}
 
         {/* GAME OVER MODAL */}
-        {gameState === 'GAME_OVER' && (
+        {/* 'NEW BEST!' TEXT ANIMATION OVERLAY (Shown before Game Over modal appears) */}
+        {isNewBestAnimating && (
+          <NewBestOverlay
+            score={newBestScore}
+            onDismiss={() => {
+              if (newBestTimerRef.current) {
+                clearTimeout(newBestTimerRef.current);
+              }
+              setIsNewBestAnimating(false);
+            }}
+          />
+        )}
+
+        {/* GAME OVER MODAL (Revealed after NEW BEST celebration) */}
+        {gameState === 'GAME_OVER' && !isNewBestAnimating && (
           <GameOverModal
             stats={stats}
             bestScore={bestScore}
@@ -538,6 +594,11 @@ export default function App() {
         {/* GLOBAL LEADERBOARD MODAL */}
         {showLeaderboard && (
           <LeaderboardModal onClose={() => setShowLeaderboard(false)} />
+        )}
+
+        {/* EARTHFALL CHRONICLES STORY MODAL */}
+        {showStoryModal && (
+          <StoryModal onClose={() => setShowStoryModal(false)} />
         )}
       </div>
     </div>

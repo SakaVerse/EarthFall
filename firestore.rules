@@ -8,14 +8,6 @@ service cloud.firestore {
     }
 
     // Security Primitives & Helpers
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
     function isValidId(id) {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
@@ -28,69 +20,108 @@ service cloud.firestore {
       return resource.data;
     }
 
-    // Leaderboard validation
-    function isValidLeaderboard(data) {
-      return data.keys().hasAll(['userId', 'username', 'score', 'date']) &&
-             data.keys().hasOnly(['userId', 'username', 'usernameLower', 'score', 'date', 'distance', 'zone', 'skin', 'updatedAt']) &&
-             data.userId is string && data.userId.size() <= 128 &&
-             data.username is string && data.username.size() >= 3 && data.username.size() <= 20 &&
-             data.username.matches('^[a-zA-Z0-9_]+$') &&
-             (!('usernameLower' in data) || (data.usernameLower is string && data.usernameLower.size() <= 20)) &&
-             data.score is number && data.score >= 0 &&
-             data.date is string && data.date.size() <= 16 && data.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
-             (!('distance' in data) || (data.distance is number && data.distance >= 0)) &&
-             (!('zone' in data) || (data.zone is string && data.zone.size() <= 64)) &&
-             (!('skin' in data) || (data.skin is string && data.skin.size() <= 32)) &&
-             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
+    function isCaller(uid) {
+      return (request.auth != null && request.auth.uid == uid) ||
+             (request.auth == null && uid is string && uid.size() >= 3 && uid.size() <= 128);
     }
 
-    // User profile validation
-    function isValidUserProfile(data) {
-      return data.keys().hasAll(['userId', 'username', 'scrapBalance']) &&
-             data.keys().hasOnly(['userId', 'username', 'scrapBalance', 'bestScore', 'bestDistance', 'unlockedSkins', 'unlockedThemes', 'streak', 'updatedAt']) &&
-             data.userId is string && data.userId.size() <= 128 &&
-             data.username is string && data.username.size() >= 3 && data.username.size() <= 20 &&
-             data.username.matches('^[a-zA-Z0-9_]+$') &&
-             data.scrapBalance is number && data.scrapBalance >= 0 &&
+    // Validation for Nickname Reservation: /nicknames/{nicknameLower}
+    function isValidNicknameReservation(data) {
+      return data.keys().hasAll(['uid', 'nickname', 'nicknameLower']) &&
+             data.keys().hasOnly(['uid', 'nickname', 'nicknameLower', 'createdAt']) &&
+             data.uid is string && data.uid.size() >= 3 && data.uid.size() <= 128 &&
+             data.nickname is string && data.nickname.size() >= 2 && data.nickname.size() <= 12 &&
+             data.nickname.matches('^[a-zA-Z0-9]+$') &&
+             data.nicknameLower is string && data.nicknameLower.size() >= 2 && data.nicknameLower.size() <= 12 &&
+             data.nicknameLower.matches('^[a-z0-9]+$') &&
+             (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64));
+    }
+
+    // Validation for Player Profile: /players/{uid}
+    function isValidPlayerProfile(data) {
+      return data.keys().hasAll(['uid', 'nickname', 'nicknameLower']) &&
+             data.keys().hasOnly(['uid', 'nickname', 'nicknameLower', 'deviceSignature', 'bestScore', 'coins', 'scrapBalance', 'unlockedSkins', 'unlockedThemes', 'updatedAt']) &&
+             data.uid is string && data.uid.size() >= 3 && data.uid.size() <= 128 &&
+             data.nickname is string && data.nickname.size() >= 2 && data.nickname.size() <= 12 &&
+             data.nickname.matches('^[a-zA-Z0-9]+$') &&
+             data.nicknameLower is string && data.nicknameLower.size() >= 2 && data.nicknameLower.size() <= 12 &&
+             data.nicknameLower.matches('^[a-z0-9]+$') &&
+             (!('deviceSignature' in data) || (data.deviceSignature is string && data.deviceSignature.size() <= 256)) &&
              (!('bestScore' in data) || (data.bestScore is number && data.bestScore >= 0)) &&
-             (!('bestDistance' in data) || (data.bestDistance is number && data.bestDistance >= 0)) &&
+             (!('coins' in data) || (data.coins is number && data.coins >= 0)) &&
+             (!('scrapBalance' in data) || (data.scrapBalance is number && data.scrapBalance >= 0)) &&
              (!('unlockedSkins' in data) || (data.unlockedSkins is list && data.unlockedSkins.size() <= 30)) &&
              (!('unlockedThemes' in data) || (data.unlockedThemes is list && data.unlockedThemes.size() <= 20)) &&
-             (!('streak' in data) || (data.streak is number && data.streak >= 0)) &&
              (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
     }
 
-    // Collection: Global Daily Leaderboard
-    // Public read so all players can view real global rankings for today
-    // Writes restricted to authenticated players
-    match /leaderboard/{entryId} {
-      allow read: if true;
-      allow create: if isSignedIn() &&
-                       isValidId(entryId) &&
-                       isValidLeaderboard(incoming()) &&
-                       incoming().userId == request.auth.uid;
-      allow update: if isSignedIn() &&
-                       isValidId(entryId) &&
-                       isValidLeaderboard(incoming()) &&
-                       (incoming().userId == existing().userId || incoming().userId == request.auth.uid);
-      allow delete: if isSignedIn() &&
-                       isValidId(entryId) &&
-                       existing().userId == request.auth.uid;
+    // Validation for Daily Score: /daily_scores/{scoreId}
+    function isValidDailyScore(data) {
+      return data.keys().hasAll(['uid', 'nickname', 'score', 'dateKey', 'roundDuration']) &&
+             data.keys().hasOnly(['uid', 'nickname', 'nicknameLower', 'score', 'dateKey', 'roundDuration', 'distance', 'zone', 'updatedAt']) &&
+             data.uid is string && data.uid.size() >= 3 && data.uid.size() <= 128 &&
+             data.nickname is string && data.nickname.size() >= 2 && data.nickname.size() <= 12 &&
+             data.nickname.matches('^[a-zA-Z0-9]+$') &&
+             (!('nicknameLower' in data) || (data.nicknameLower is string && data.nicknameLower.size() <= 12)) &&
+             data.score is number && data.score > 0 && data.score <= 1000000 &&
+             data.dateKey is string && data.dateKey.size() == 10 && data.dateKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+             data.roundDuration is number && data.roundDuration >= 5 &&
+             (!('distance' in data) || (data.distance is number && data.distance >= 0)) &&
+             (!('zone' in data) || (data.zone is string && data.zone.size() <= 64)) &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
     }
 
-    // Collection: User Profiles & Cloud Saves
-    match /users/{userId} {
-      allow read: if isOwner(userId) && isValidId(userId);
-      allow create: if isOwner(userId) &&
-                       isValidId(userId) &&
-                       isValidUserProfile(incoming()) &&
-                       incoming().userId == request.auth.uid;
-      allow update: if isOwner(userId) &&
-                       isValidId(userId) &&
-                       isValidUserProfile(incoming()) &&
-                       incoming().userId == request.auth.uid &&
-                       incoming().userId == existing().userId;
-      allow delete: if isOwner(userId) && isValidId(userId);
+    // Collection 1: Nicknames (Reservation & Ownership)
+    // Public read so availability can be verified instantly.
+    // Create locks to the caller's UID. Update only permitted if same UID owns it.
+    match /nicknames/{nicknameLower} {
+      allow read: if true;
+      allow create: if isValidId(nicknameLower) &&
+                       isValidNicknameReservation(incoming()) &&
+                       incoming().nicknameLower == nicknameLower &&
+                       isCaller(incoming().uid);
+      allow update: if isValidId(nicknameLower) &&
+                       isValidNicknameReservation(incoming()) &&
+                       existing().uid == incoming().uid &&
+                       isCaller(incoming().uid);
+      allow delete: if false;
+    }
+
+    // Collection 2: Players (Auto-load Nickname on Return)
+    // Public read so returning players or leaderboard lookups can resolve nicknames.
+    match /players/{uid} {
+      allow read: if true;
+      allow create: if isValidId(uid) &&
+                       isValidPlayerProfile(incoming()) &&
+                       incoming().uid == uid &&
+                       isCaller(uid);
+      allow update: if isValidId(uid) &&
+                       isValidPlayerProfile(incoming()) &&
+                       incoming().uid == uid &&
+                       isCaller(uid);
+      allow delete: if false;
+    }
+
+    // Collection 3: Daily Scores (Real-Time Global Leaderboard)
+    // Public read for real-time top 10 rankings.
+    // Creates and updates require score > 0, score <= 1000000, roundDuration >= 5s.
+    match /daily_scores/{scoreId} {
+      allow read: if true;
+      allow create: if isValidId(scoreId) &&
+                       isValidDailyScore(incoming()) &&
+                       isCaller(incoming().uid);
+      allow update: if isValidId(scoreId) &&
+                       isValidDailyScore(incoming()) &&
+                       incoming().uid == existing().uid &&
+                       incoming().score >= existing().score &&
+                       isCaller(incoming().uid);
+      allow delete: if false;
+    }
+
+    // Legacy fallback compatibility for leaderboard collection during migration
+    match /leaderboard/{entryId} {
+      allow read: if true;
+      allow write: if false;
     }
   }
 }

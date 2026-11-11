@@ -366,6 +366,7 @@ export class GameEngine {
     LeaderboardManager.submitScore(
       this.stats.score,
       ZONES[this.stats.zone].name,
+      this.timeAlive,
       this.stats.distance,
       this.equippedSkin.id
     );

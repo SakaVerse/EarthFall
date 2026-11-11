@@ -12,106 +12,359 @@ import {
 } from 'firebase/firestore';
 import { db } from './config';
 import { AuthService } from './authService';
-import { handleFirestoreError, OperationType } from './error';
 import { LeaderboardEntry } from '../game/types';
 import { getTodayISTDateString } from '../utils/date';
+import { getDeviceSignature } from '../utils/recoveryDb';
 
-export interface CloudUserProfile {
-  userId: string;
-  username: string;
-  scrapBalance: number;
+export interface PlayerProfileData {
+  uid: string;
+  nickname: string;
+  nicknameLower: string;
+  deviceSignature?: string;
   bestScore?: number;
-  bestDistance?: number;
+  coins?: number;
+  scrapBalance?: number;
   unlockedSkins?: string[];
   unlockedThemes?: string[];
-  streak?: number;
   updatedAt?: string;
 }
 
 export class CloudService {
+  private static lastSubmissionTimestamp = 0;
+  private static cachedNickname: string | null = null;
+  private static cachedProfile: PlayerProfileData | null = null;
+
   /**
-   * Returns today's date string in YYYY-MM-DD format (IST / Asia/Kolkata)
+   * Returns today's dateKey in YYYY-MM-DD format (IST / Asia/Kolkata timezone)
    */
-  public static getTodayDate(): string {
+  public static getTodayDateKey(): string {
     return getTodayISTDateString();
   }
 
   /**
-   * Checks if a username (case-insensitive) is already taken in Firestore for today's date.
-   * If it was created by another player today, returns true (taken).
-   * If it doesn't exist today, or belongs to the current user's session, returns false (available).
+   * Auto-loads player profile directly from Firestore /players/{uid}.
    */
-  public static async isUsernameTakenToday(username: string): Promise<boolean> {
-    const trimmed = username.trim();
-    if (!trimmed) return false;
-
-    const today = this.getTodayDate();
-    const lower = trimmed.toLowerCase();
-    const docId = `${today}_${lower}`;
-    const path = `leaderboard/${docId}`;
+  public static async loadPlayerProfile(uid: string): Promise<PlayerProfileData | null> {
+    if (!uid) return null;
 
     try {
-      const user = await AuthService.ensureAuth();
-      const docRef = doc(db, 'leaderboard', docId);
-      const snap = await getDoc(docRef);
-
+      const playerDocRef = doc(db, 'players', uid);
+      const snap = await getDoc(playerDocRef);
       if (snap.exists()) {
-        const data = snap.data();
-        // If it belongs to another user, it is taken
-        if (data && data.userId && data.userId !== user.uid) {
-          return true;
+        const data = snap.data() as PlayerProfileData;
+        if (data && typeof data.nickname === 'string' && data.nickname.trim()) {
+          this.cachedNickname = data.nickname.trim();
+          this.cachedProfile = data;
+          return data;
         }
       }
+    } catch (err) {
+      console.warn('loadPlayerProfile from Firestore notice:', err);
+    }
 
-      // Also check query with usernameLower & date to be 100% certain
+    return null;
+  }
+
+  /**
+   * Query Firestore for a player profile with matching device signature.
+   */
+  public static async findPlayerByDeviceSignature(
+    signature: string
+  ): Promise<{ uid: string; profile: PlayerProfileData } | null> {
+    if (!signature) return null;
+
+    try {
       const q = query(
-        collection(db, 'leaderboard'),
-        where('date', '==', today),
-        where('usernameLower', '==', lower),
+        collection(db, 'players'),
+        where('deviceSignature', '==', signature),
         limit(1)
       );
       const querySnap = await getDocs(q);
       if (!querySnap.empty) {
-        const matchDoc = querySnap.docs[0].data();
-        if (matchDoc && matchDoc.userId && matchDoc.userId !== user.uid) {
-          return true;
+        const docSnap = querySnap.docs[0];
+        const data = docSnap.data() as PlayerProfileData;
+        if (data && data.uid && data.nickname) {
+          this.cachedNickname = data.nickname;
+          this.cachedProfile = data;
+          return { uid: data.uid, profile: data };
         }
       }
-
-      return false;
     } catch (err) {
-      console.warn('Username check notice:', err);
-      // If error occurs, check through error handler
-      handleFirestoreError(err, OperationType.GET, path);
+      console.warn('findPlayerByDeviceSignature Firestore query notice:', err);
+    }
+
+    return null;
+  }
+
+  /**
+   * Persists / updates player profile data in Firestore /players/{uid}
+   */
+  public static async savePlayerProfile(
+    uid: string,
+    updates: Partial<PlayerProfileData>
+  ): Promise<void> {
+    if (!uid) return;
+
+    try {
+      const playerDocRef = doc(db, 'players', uid);
+      const signature = updates.deviceSignature || getDeviceSignature();
+      const payload: Partial<PlayerProfileData> = {
+        ...updates,
+        uid,
+        deviceSignature: signature,
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (updates.nickname) {
+        payload.nicknameLower = updates.nickname.toLowerCase();
+        this.cachedNickname = updates.nickname;
+      }
+
+      await setDoc(playerDocRef, payload, { merge: true });
+    } catch (err) {
+      console.warn('savePlayerProfile Firestore notice:', err);
     }
   }
 
   /**
-   * Real-time listener for today's global daily leaderboard (Asia/Kolkata IST).
-   * Filtered by today's date, ordered by score descending, limited to top 20.
-   * Automatically handles mid-session midnight transitions.
+   * Auto-loads the player's claimed nickname from Firestore on game start or return.
+   * Directly queries the /players/{uid} collection.
    */
-  public static subscribeDailyLeaderboard(
-    callback: (entries: LeaderboardEntry[], date: string) => void
+  public static async autoLoadPlayerNickname(): Promise<string | null> {
+    if (this.cachedNickname) {
+      return this.cachedNickname;
+    }
+
+    const uid = AuthService.getUserId();
+    if (!uid) return null;
+
+    const profile = await this.loadPlayerProfile(uid);
+    if (profile?.nickname) {
+      return profile.nickname;
+    }
+
+    return null;
+  }
+
+  public static getCachedNickname(): string | null {
+    return this.cachedNickname;
+  }
+
+  public static getCachedProfile(): PlayerProfileData | null {
+    return this.cachedProfile;
+  }
+
+  public static clearCachedNickname(): void {
+    this.cachedNickname = null;
+    this.cachedProfile = null;
+  }
+
+  /**
+   * Checks if a nickname (case-insensitive) is available and locks it to the player's UID.
+   * If already claimed by another UID in Firestore, rejects with:
+   * "Nickname is already taken, please try another!"
+   */
+  public static async checkAndReserveNickname(
+    nickname: string
+  ): Promise<{ success: boolean; error?: string }> {
+    const trimmed = nickname.trim();
+    if (!trimmed) {
+      return { success: false, error: 'Nickname cannot be empty' };
+    }
+
+    if (trimmed.length < 2 || trimmed.length > 12) {
+      return { success: false, error: 'Nickname must be between 2 and 12 characters' };
+    }
+
+    const alphanumericRegex = /^[a-zA-Z0-9]+$/;
+    if (!alphanumericRegex.test(trimmed)) {
+      return { success: false, error: 'Nickname can only contain letters and numbers' };
+    }
+
+    const uid = AuthService.getUserId();
+    const lower = trimmed.toLowerCase();
+    const signature = getDeviceSignature();
+
+    try {
+      // 1. Direct document lookup in /nicknames/{nicknameLower}
+      const nicknameDocRef = doc(db, 'nicknames', lower);
+      const snap = await getDoc(nicknameDocRef);
+
+      if (snap.exists()) {
+        const existingData = snap.data();
+        // If claimed by another player UID, reject with exact error message required
+        if (existingData && existingData.uid && existingData.uid !== uid) {
+          return {
+            success: false,
+            error: 'Nickname is already taken, please try another!',
+          };
+        }
+      }
+
+      // 2. Query check across nicknames collection for safety
+      const q = query(
+        collection(db, 'nicknames'),
+        where('nicknameLower', '==', lower),
+        limit(1)
+      );
+      const querySnap = await getDocs(q);
+      if (!querySnap.empty) {
+        const docData = querySnap.docs[0].data();
+        if (docData && docData.uid && docData.uid !== uid) {
+          return {
+            success: false,
+            error: 'Nickname is already taken, please try another!',
+          };
+        }
+      }
+
+      // Nickname is available: Lock to this player's UID in Firestore
+      const nowIso = new Date().toISOString();
+
+      await setDoc(nicknameDocRef, {
+        uid,
+        nickname: trimmed,
+        nicknameLower: lower,
+        createdAt: snap.exists() ? (snap.data()?.createdAt || nowIso) : nowIso,
+      }, { merge: true });
+
+      // Save to /players/{uid} with device signature for permanent recovery
+      const playerDocRef = doc(db, 'players', uid);
+      await setDoc(playerDocRef, {
+        uid,
+        nickname: trimmed,
+        nicknameLower: lower,
+        deviceSignature: signature,
+        updatedAt: nowIso,
+      }, { merge: true });
+
+      this.cachedNickname = trimmed;
+      return { success: true };
+    } catch (err: any) {
+      console.warn('Nickname reservation Firestore notice:', err);
+      this.cachedNickname = trimmed;
+      return { success: true };
+    }
+  }
+
+  /**
+   * Anti-Bot & Real-Play Validated Score Submission:
+   * 1. Requires score > 0 and score <= 1,000,000.
+   * 2. Requires round duration >= 5 seconds.
+   * 3. Enforces 10-second cooldown between submissions.
+   * 4. Updates document only if new score is higher.
+   */
+  public static async submitDailyScore(
+    score: number,
+    roundDuration: number,
+    distance: number,
+    zone: string,
+    nickname: string
+  ): Promise<{ success: boolean; reason?: string }> {
+    if (score <= 0 || score > 1000000) {
+      return { success: false, reason: 'Invalid score value' };
+    }
+
+    if (roundDuration < 5) {
+      console.warn(`Anti-Bot: Round duration too short (${roundDuration}s < 5s). Score submission blocked.`);
+      return { success: false, reason: 'Round duration too short' };
+    }
+
+    const now = Date.now();
+    if (now - this.lastSubmissionTimestamp < 10000) {
+      console.warn('Submission cooldown active (10s required).');
+      return { success: false, reason: 'Cooldown active' };
+    }
+    this.lastSubmissionTimestamp = now;
+
+    const uid = AuthService.getUserId();
+    const cleanNickname = nickname.trim().slice(0, 12);
+    if (!cleanNickname) {
+      return { success: false, reason: 'Missing nickname' };
+    }
+
+    const dateKey = this.getTodayDateKey();
+    const scoreDocId = `${dateKey}_${uid}`;
+
+    try {
+      const scoreDocRef = doc(db, 'daily_scores', scoreDocId);
+      const snap = await getDoc(scoreDocRef);
+
+      const roundedScore = Math.round(score);
+      const roundedDistance = Math.round(distance);
+      const roundedDuration = Math.round(roundDuration);
+
+      if (snap.exists()) {
+        const existingData = snap.data();
+        const existingScore = existingData?.score ?? 0;
+
+        if (roundedScore <= existingScore) {
+          return { success: true, reason: 'Previous score higher' };
+        }
+
+        await setDoc(
+          scoreDocRef,
+          {
+            uid,
+            nickname: cleanNickname,
+            nicknameLower: cleanNickname.toLowerCase(),
+            score: roundedScore,
+            dateKey,
+            roundDuration: roundedDuration,
+            distance: roundedDistance,
+            zone: zone.slice(0, 64),
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+
+        // Also update player profile with best score
+        this.savePlayerProfile(uid, { bestScore: roundedScore }).catch(() => {});
+        return { success: true };
+      }
+
+      // First score for today
+      await setDoc(scoreDocRef, {
+        uid,
+        nickname: cleanNickname,
+        nicknameLower: cleanNickname.toLowerCase(),
+        score: roundedScore,
+        dateKey,
+        roundDuration: roundedDuration,
+        distance: roundedDistance,
+        zone: zone.slice(0, 64),
+        updatedAt: new Date().toISOString(),
+      });
+
+      this.savePlayerProfile(uid, { bestScore: roundedScore }).catch(() => {});
+      return { success: true };
+    } catch (err) {
+      console.warn('Score submission to Firestore notice:', err);
+      return { success: false, reason: 'Network error' };
+    }
+  }
+
+  /**
+   * Real-time listener for "Today's Top 10 Global Leaderboard" (Asia/Kolkata IST).
+   */
+  public static subscribeTodayTop10(
+    callback: (entries: LeaderboardEntry[], dateKey: string) => void
   ): () => void {
-    let activeDate = this.getTodayDate();
+    let activeDateKey = this.getTodayDateKey();
     let unsubscribeFirestore: (() => void) | null = null;
     let isDisposed = false;
 
-    const setupListenerForDate = (date: string) => {
+    const setupListenerForDate = (dateKey: string) => {
       if (unsubscribeFirestore) {
         unsubscribeFirestore();
         unsubscribeFirestore = null;
       }
 
-      const path = 'leaderboard';
-
-      // Primary query: filtered by today's date, ordered by score descending, limited to top 20
-      const primaryQuery = query(
-        collection(db, path),
-        where('date', '==', date),
+      const top10Query = query(
+        collection(db, 'daily_scores'),
+        where('dateKey', '==', dateKey),
         orderBy('score', 'desc'),
-        limit(20)
+        limit(10)
       );
 
       const handleSnapshot = (snapshot: any) => {
@@ -119,67 +372,61 @@ export class CloudService {
         const entries: LeaderboardEntry[] = [];
         snapshot.forEach((docSnap: any) => {
           const data = docSnap.data();
-          if (data && typeof data.username === 'string' && typeof data.score === 'number') {
+          if (
+            data &&
+            typeof data.nickname === 'string' &&
+            typeof data.score === 'number' &&
+            data.score > 0
+          ) {
             entries.push({
-              username: data.username,
+              username: data.nickname,
               score: data.score,
-              zone: data.zone || 'Solar System',
-              date: data.date || date,
+              zone: data.zone || 'Zone 1: Solar System Outskirts',
+              date: data.dateKey || dateKey,
             });
           }
         });
 
-        // Ensure sorted descending
         entries.sort((a, b) => b.score - a.score);
-        callback(entries, date);
+        const top10 = entries.slice(0, 10);
+        callback(top10, dateKey);
       };
 
       try {
         unsubscribeFirestore = onSnapshot(
-          primaryQuery,
+          top10Query,
           handleSnapshot,
           (err) => {
             if (isDisposed) return;
-            console.warn('Primary leaderboard query notice (fallback to date filter):', err?.message);
-
-            // Resilient fallback if composite index is pending: filter by date, sort in memory
+            console.warn('Top 10 daily_scores primary query note (falling back to dateKey filter):', err?.message);
             try {
               const fallbackQuery = query(
-                collection(db, path),
-                where('date', '==', date),
+                collection(db, 'daily_scores'),
+                where('dateKey', '==', dateKey),
                 limit(50)
               );
-              unsubscribeFirestore = onSnapshot(
-                fallbackQuery,
-                handleSnapshot,
-                (fallbackErr) => {
-                  handleFirestoreError(fallbackErr, OperationType.LIST, path);
-                }
-              );
+              unsubscribeFirestore = onSnapshot(fallbackQuery, handleSnapshot);
             } catch (fbErr) {
-              handleFirestoreError(fbErr, OperationType.LIST, path);
+              console.warn('Fallback onSnapshot notice:', fbErr);
             }
           }
         );
       } catch (err) {
-        handleFirestoreError(err, OperationType.LIST, path);
+        console.warn('Failed to attach daily_scores onSnapshot:', err);
       }
     };
 
-    // Initial setup for today's date
-    setupListenerForDate(activeDate);
+    setupListenerForDate(activeDateKey);
 
-    // Check every 10 seconds for 12:00 AM midnight date change in IST
     const midnightCheckInterval = setInterval(() => {
       if (isDisposed) return;
-      const currentDate = this.getTodayDate();
-      if (currentDate !== activeDate) {
-        activeDate = currentDate;
-        // Instantly switch to fresh empty board for the new day
-        callback([], activeDate);
-        setupListenerForDate(activeDate);
+      const currentDateKey = this.getTodayDateKey();
+      if (currentDateKey !== activeDateKey) {
+        activeDateKey = currentDateKey;
+        callback([], activeDateKey);
+        setupListenerForDate(activeDateKey);
       }
-    }, 10000);
+    }, 5000);
 
     return () => {
       isDisposed = true;
@@ -188,128 +435,5 @@ export class CloudService {
         unsubscribeFirestore();
       }
     };
-  }
-
-  /**
-   * Saves or updates a player's score to Cloud Firestore for today's date (Asia/Kolkata IST).
-   * If a score already exists for today, only updates if the new score is higher.
-   */
-  public static async submitScore(
-    score: number,
-    distance: number,
-    zone: string,
-    skinId: string,
-    username: string
-  ): Promise<boolean> {
-    if (score <= 0) return false;
-
-    const today = this.getTodayDate();
-    const cleanUsername = username.trim().slice(0, 20);
-    const lower = cleanUsername.toLowerCase();
-    const docId = `${today}_${lower}`;
-    const path = `leaderboard/${docId}`;
-
-    try {
-      const user = await AuthService.ensureAuth();
-      const docRef = doc(db, 'leaderboard', docId);
-
-      // Check existing entry for today
-      const snap = await getDoc(docRef);
-      if (snap.exists()) {
-        const existingData = snap.data();
-        const existingScore = existingData?.score ?? 0;
-
-        // If new score is NOT higher than today's existing record, do not overwrite
-        if (score <= existingScore) {
-          return false;
-        }
-
-        // Update with higher score
-        const updatePayload = {
-          userId: user.uid,
-          username: cleanUsername,
-          usernameLower: lower,
-          score: Math.round(score),
-          date: today,
-          distance: Math.round(distance),
-          zone: zone.slice(0, 64),
-          skin: skinId.slice(0, 32),
-          updatedAt: new Date().toISOString(),
-        };
-
-        await setDoc(docRef, updatePayload, { merge: true });
-        return true;
-      }
-
-      // Brand new entry for today
-      const newPayload = {
-        userId: user.uid,
-        username: cleanUsername,
-        usernameLower: lower,
-        score: Math.round(score),
-        date: today,
-        distance: Math.round(distance),
-        zone: zone.slice(0, 64),
-        skin: skinId.slice(0, 32),
-        updatedAt: new Date().toISOString(),
-      };
-
-      await setDoc(docRef, newPayload);
-      return true;
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, path);
-    }
-  }
-
-  /**
-   * Saves user profile and game progress (cosmetics, scrap, streak) to Firestore
-   */
-  public static async saveUserProfile(profile: Omit<CloudUserProfile, 'userId' | 'updatedAt'>): Promise<void> {
-    const user = AuthService.getUser();
-    if (!user) return;
-
-    const path = `users/${user.uid}`;
-    try {
-      const docId = user.uid.replace(/[^a-zA-Z0-9_\-]/g, '_');
-      const docRef = doc(db, 'users', docId);
-
-      const payload: CloudUserProfile = {
-        userId: user.uid,
-        username: profile.username.trim().slice(0, 20),
-        scrapBalance: Math.max(0, Math.round(profile.scrapBalance)),
-        bestScore: profile.bestScore ? Math.round(profile.bestScore) : 0,
-        bestDistance: profile.bestDistance ? Math.round(profile.bestDistance) : 0,
-        unlockedSkins: profile.unlockedSkins || [],
-        unlockedThemes: profile.unlockedThemes || [],
-        streak: profile.streak || 1,
-        updatedAt: new Date().toISOString(),
-      };
-
-      await setDoc(docRef, payload, { merge: true });
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, path);
-    }
-  }
-
-  /**
-   * Loads user profile from Firestore
-   */
-  public static async loadUserProfile(): Promise<CloudUserProfile | null> {
-    const user = AuthService.getUser();
-    if (!user) return null;
-
-    const path = `users/${user.uid}`;
-    try {
-      const docId = user.uid.replace(/[^a-zA-Z0-9_\-]/g, '_');
-      const docRef = doc(db, 'users', docId);
-      const snap = await getDoc(docRef);
-
-      if (snap.exists()) {
-        return snap.data() as CloudUserProfile;
-      }
-      return null;
-    } catch (err) {
-      handleFirestoreError(err, OperationType.GET, path);
-    }
   }
 }

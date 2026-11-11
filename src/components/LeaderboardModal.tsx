@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Trophy, Medal, Crown, Cloud } from 'lucide-react';
+import { X, Trophy, Medal, Crown, Cloud, Clock } from 'lucide-react';
 import { LeaderboardManager } from '../game/leaderboard';
 import { soundEngine } from '../game/audio';
 import { LeaderboardEntry } from '../game/types';
@@ -13,12 +13,12 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ onClose }) =
   const [activeDate, setActiveDate] = useState<string>(() => LeaderboardManager.getTodayDateString());
   const currentUsername = LeaderboardManager.getUsername();
 
+  // Mount real-time subscription directly via LeaderboardManager
   useEffect(() => {
-    const unsub = LeaderboardManager.subscribe((updated, date) => {
-      setEntries(updated);
-      setActiveDate(date);
+    return LeaderboardManager.subscribe((liveEntries, dateKey) => {
+      setEntries(liveEntries);
+      setActiveDate(dateKey);
     });
-    return () => unsub();
   }, []);
 
   return (
@@ -33,16 +33,18 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ onClose }) =
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-lg sm:text-xl font-display font-black text-white tracking-wide">
-                  GLOBAL LEADERBOARD
+                  TODAY'S TOP 10 GLOBAL LEADERBOARD
                 </h3>
                 <span className="flex items-center gap-1 text-[9px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-1.5 py-0.5 rounded-full">
                   <Cloud className="w-2.5 h-2.5 animate-pulse" />
                   LIVE
                 </span>
               </div>
-              <p className="text-[11px] font-mono text-slate-400">
-                Daily Top 20 &bull; Resets 12:00 AM IST ({activeDate})
-              </p>
+              <div className="flex items-center gap-1.5 text-[11px] font-mono text-sky-300/90 mt-0.5">
+                <Clock className="w-3 h-3 text-sky-400" />
+                <span>Resets daily at 12:00 AM</span>
+                <span className="text-slate-500">({activeDate})</span>
+              </div>
             </div>
           </div>
 
@@ -66,14 +68,14 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ onClose }) =
         )}
 
         {/* Scrollable Leaderboard Table or Empty State */}
-        <div className="mt-4 overflow-y-auto space-y-2 pr-1 custom-scrollbar min-h-[140px] flex flex-col justify-center">
+        <div className="mt-4 overflow-y-auto space-y-2 pr-1 custom-scrollbar min-h-[160px] flex flex-col justify-center">
           {entries.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
               <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mb-3 shadow-[0_0_20px_rgba(245,158,11,0.2)]">
                 <Trophy className="w-6 h-6 text-amber-400" />
               </div>
               <h4 className="text-base font-display font-black text-white tracking-wide mb-1">
-                No scores yet - Be the first!
+                No scores yet—be the first!
               </h4>
               <p className="text-xs font-mono text-slate-400 max-w-xs">
                 Launch Earth into deep space, dodge cosmic hazards, and claim Rank #1 on today's leaderboard.
@@ -93,6 +95,10 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ onClose }) =
                       ? 'bg-sky-950/80 border-sky-400/80 shadow-[0_0_18px_rgba(56,189,248,0.4)] ring-1 ring-sky-400/50'
                       : isTop1
                       ? 'bg-amber-950/30 border-amber-500/40'
+                      : isTop2
+                      ? 'bg-slate-900/60 border-slate-800'
+                      : isTop3
+                      ? 'bg-amber-950/20 border-amber-700/30'
                       : 'bg-slate-950/60 border-slate-800/80'
                   }`}
                 >

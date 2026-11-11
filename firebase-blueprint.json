@@ -1,99 +1,63 @@
 {
   "entities": {
-    "LeaderboardEntry": {
-      "title": "Daily Leaderboard Entry",
-      "description": "A high score entry on the global daily cosmic leaderboard tagged with date in IST",
+    "NicknameReservation": {
+      "title": "Nickname Reservation",
+      "description": "Unique nickname reservation locked to a player's Firebase UID",
       "type": "object",
       "properties": {
-        "userId": {
-          "type": "string",
-          "maxLength": 128
-        },
-        "username": {
-          "type": "string",
-          "maxLength": 20,
-          "minLength": 3,
-          "pattern": "^[a-zA-Z0-9_]+$"
-        },
-        "usernameLower": {
-          "type": "string",
-          "maxLength": 20
-        },
-        "score": {
-          "type": "number"
-        },
-        "date": {
-          "type": "string",
-          "maxLength": 16,
-          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
-        },
-        "distance": {
-          "type": "number"
-        },
-        "zone": {
-          "type": "string",
-          "maxLength": 64
-        },
-        "skin": {
-          "type": "string",
-          "maxLength": 32
-        },
-        "updatedAt": {
-          "type": "string",
-          "maxLength": 64
-        }
+        "uid": { "type": "string", "maxLength": 128 },
+        "nickname": { "type": "string", "maxLength": 12, "minLength": 2, "pattern": "^[a-zA-Z0-9]+$" },
+        "nicknameLower": { "type": "string", "maxLength": 12, "minLength": 2, "pattern": "^[a-zA-Z0-9]+$" },
+        "createdAt": { "type": "string", "maxLength": 64 }
       },
-      "required": ["userId", "username", "score", "date"]
+      "required": ["uid", "nickname", "nicknameLower"]
     },
-    "UserProfile": {
-      "title": "User Profile",
-      "description": "User account profile and persistent cosmic progress save",
+    "PlayerProfile": {
+      "title": "Player Profile",
+      "description": "Player record linking UID to active nickname, device signature, and progress in Firestore",
       "type": "object",
       "properties": {
-        "userId": {
-          "type": "string",
-          "maxLength": 128
-        },
-        "username": {
-          "type": "string",
-          "maxLength": 20,
-          "minLength": 3,
-          "pattern": "^[a-zA-Z0-9_]+$"
-        },
-        "scrapBalance": {
-          "type": "number"
-        },
-        "bestScore": {
-          "type": "number"
-        },
-        "bestDistance": {
-          "type": "number"
-        },
-        "unlockedSkins": {
-          "type": "array"
-        },
-        "unlockedThemes": {
-          "type": "array"
-        },
-        "streak": {
-          "type": "number"
-        },
-        "updatedAt": {
-          "type": "string",
-          "maxLength": 64
-        }
+        "uid": { "type": "string", "maxLength": 128 },
+        "nickname": { "type": "string", "maxLength": 12, "minLength": 2, "pattern": "^[a-zA-Z0-9]+$" },
+        "nicknameLower": { "type": "string", "maxLength": 12, "minLength": 2, "pattern": "^[a-zA-Z0-9]+$" },
+        "deviceSignature": { "type": "string", "maxLength": 256 },
+        "bestScore": { "type": "number" },
+        "coins": { "type": "number" },
+        "scrapBalance": { "type": "number" },
+        "updatedAt": { "type": "string", "maxLength": 64 }
       },
-      "required": ["userId", "username", "scrapBalance"]
+      "required": ["uid", "nickname", "nicknameLower"]
+    },
+    "DailyScore": {
+      "title": "Daily Leaderboard Score",
+      "description": "Anti-bot validated score entry for today's daily leaderboard in IST",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "nickname": { "type": "string", "maxLength": 12, "minLength": 2, "pattern": "^[a-zA-Z0-9]+$" },
+        "nicknameLower": { "type": "string", "maxLength": 12 },
+        "score": { "type": "number" },
+        "dateKey": { "type": "string", "maxLength": 10, "minLength": 10, "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "roundDuration": { "type": "number" },
+        "distance": { "type": "number" },
+        "zone": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["uid", "nickname", "score", "dateKey", "roundDuration"]
     }
   },
   "firestore": {
-    "/leaderboard/{entryId}": {
-      "schema": "LeaderboardEntry",
-      "description": "Global daily leaderboard entries submitted by verified or active players"
+    "/nicknames/{nicknameLower}": {
+      "schema": "NicknameReservation",
+      "description": "Unique nickname reservation mapping lowercased nickname to player UID"
     },
-    "/users/{userId}": {
-      "schema": "UserProfile",
-      "description": "Private user cloud save data and account settings"
+    "/players/{uid}": {
+      "schema": "PlayerProfile",
+      "description": "Player profile storing registered nickname, device signature, and progress in Firestore"
+    },
+    "/daily_scores/{scoreId}": {
+      "schema": "DailyScore",
+      "description": "Daily global score entries with dateKey reset and real-play validation"
     }
   }
 }

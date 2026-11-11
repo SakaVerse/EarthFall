@@ -1,16 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { Volume2, VolumeX, Play, Settings, Trophy, ShoppingBag, Target, ListOrdered, Cloud, LogIn, LogOut } from 'lucide-react';
+import React from 'react';
+import { Volume2, VolumeX, Play, Settings, Trophy, ShoppingBag, Target, ListOrdered, BookOpen } from 'lucide-react';
 import { soundEngine } from '../game/audio';
 import { DailyMissionsManager } from '../game/dailyMissions';
 import { CosmeticsManager } from '../game/cosmetics';
-import { AuthService } from '../firebase/authService';
-import { User } from 'firebase/auth';
+import { LeaderboardManager } from '../game/leaderboard';
 
 interface TitleScreenProps {
   onStart: () => void;
   onOpenShop: () => void;
   onOpenMissions: () => void;
   onOpenLeaderboard: () => void;
+  onOpenStory: () => void;
   onSettings: () => void;
   bestScore: number;
   muted: boolean;
@@ -23,6 +23,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onOpenShop,
   onOpenMissions,
   onOpenLeaderboard,
+  onOpenStory,
   onSettings,
   bestScore,
   muted,
@@ -31,42 +32,13 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 }) => {
   const unclaimedCount = DailyMissionsManager.getUnclaimedCount();
   const scrapBalance = CosmeticsManager.getScrapBalance();
-  const [authUser, setAuthUser] = useState<User | null>(() => AuthService.getUser());
-  const [isSigningIn, setIsSigningIn] = useState(false);
-
-  useEffect(() => {
-    return AuthService.subscribe((user) => {
-      setAuthUser(user);
-    });
-  }, []);
-
-  const handleGoogleAuth = async () => {
-    soundEngine.playClick();
-    if (authUser && !authUser.isAnonymous) {
-      const confirmSignOut = window.confirm('Sign out of your Google Account?');
-      if (confirmSignOut) {
-        await AuthService.signOut();
-      }
-      return;
-    }
-
-    try {
-      setIsSigningIn(true);
-      await AuthService.signInWithGoogle();
-    } catch (err) {
-      console.warn('Google sign in error:', err);
-    } finally {
-      setIsSigningIn(false);
-    }
-  };
-
-  const isRealUser = authUser && !authUser.isAnonymous;
+  const currentNickname = LeaderboardManager.getUsername();
 
   return (
     <div className="absolute inset-0 flex flex-col justify-between items-center p-2.5 sm:p-6 pt-[max(0.6rem,env(safe-area-inset-top))] pb-[max(0.5rem,env(safe-area-inset-bottom))] pl-[max(0.6rem,env(safe-area-inset-left))] pr-[max(0.6rem,env(safe-area-inset-right))] pointer-events-none select-none z-30 overflow-hidden">
-      {/* TOP HEADER: BEST SCORE & AUDIO / SETTINGS */}
-      <div className="w-full flex justify-between items-center max-w-4xl pointer-events-auto">
-        {/* Best Score & Cloud Sync Pill */}
+      {/* TOP HEADER: BEST SCORE & QUICK SETTINGS */}
+      <div className="w-full flex justify-between items-center max-w-4xl pointer-events-auto shrink-0">
+        {/* Best Score & Callsign Pill */}
         <div className="flex items-center gap-1.5 sm:gap-2">
           <div className="flex items-center gap-1.5 sm:gap-2 bg-slate-950/85 backdrop-blur-md px-2.5 py-1.5 sm:px-3.5 sm:py-2 rounded-xl sm:rounded-2xl border border-sky-500/30 shadow-lg">
             <Trophy className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
@@ -78,35 +50,15 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             </span>
           </div>
 
-          {/* Cloud Auth Status Pill */}
-          <button
-            onClick={handleGoogleAuth}
-            disabled={isSigningIn}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl sm:rounded-2xl border backdrop-blur-md text-[10px] sm:text-xs font-mono transition-all shadow-md active:scale-95 cursor-pointer ${
-              isRealUser
-                ? 'bg-emerald-950/70 border-emerald-500/40 text-emerald-300 hover:bg-emerald-900/70'
-                : 'bg-slate-950/85 border-slate-700/70 text-slate-300 hover:bg-slate-900 hover:border-sky-500/40'
-            }`}
-            title={isRealUser ? `Signed in as ${authUser.displayName || authUser.email}` : 'Sign in with Google for cloud saves'}
-          >
-            {isRealUser ? (
-              <>
-                <Cloud className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="max-w-[70px] sm:max-w-[100px] truncate font-bold">
-                  {authUser.displayName || 'Pilot'}
-                </span>
-                <LogOut className="w-3 h-3 text-emerald-500/70 hover:text-emerald-300" />
-              </>
-            ) : (
-              <>
-                <LogIn className="w-3.5 h-3.5 text-sky-400" />
-                <span className="font-bold">{isSigningIn ? 'Connecting...' : 'Cloud Save'}</span>
-              </>
-            )}
-          </button>
+          {currentNickname && (
+            <div className="hidden sm:flex items-center gap-1.5 bg-slate-950/85 backdrop-blur-md px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl sm:rounded-2xl border border-slate-700/70 text-slate-300 text-xs font-mono shadow-md">
+              <span className="text-slate-500 font-bold">PILOT:</span>
+              <span className="font-bold text-sky-300">{currentNickname}</span>
+            </div>
+          )}
         </div>
 
-        {/* Currency & Quick Settings */}
+        {/* Currency & Audio / Settings Controls */}
         <div className="flex items-center gap-1.5 sm:gap-2">
           {/* Coins / Scrap Pill */}
           <div className="flex items-center gap-1 sm:gap-1.5 bg-slate-950/85 backdrop-blur-md px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl sm:rounded-2xl border border-amber-500/30 text-amber-300 shadow-md">
@@ -140,8 +92,32 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         </div>
       </div>
 
-      {/* CENTER: BIG TITLE "EARTH FALL" & BIG PLAY BUTTON */}
-      <div className="flex flex-col items-center text-center my-auto pointer-events-auto max-w-lg w-full px-3 sm:px-4">
+      {/* SLEEK SIDE 'STORY' BUTTON (Left side, without overlapping any controls) */}
+      <div className="absolute left-2.5 sm:left-6 top-[28%] sm:top-1/2 -translate-y-1/2 z-30 pointer-events-auto">
+        <button
+          onClick={() => {
+            soundEngine.playClick();
+            onOpenStory();
+          }}
+          className="group flex items-center gap-2 px-2.5 py-2 sm:px-3.5 sm:py-2.5 rounded-2xl bg-slate-950/90 hover:bg-slate-900 border border-sky-500/40 hover:border-sky-400 text-sky-300 hover:text-white transition-all shadow-[0_0_20px_rgba(56,189,248,0.25)] hover:shadow-[0_0_30px_rgba(56,189,248,0.45)] active:scale-95 cursor-pointer backdrop-blur-md"
+          title="Read the Earthfall Story"
+        >
+          <div className="p-1 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-400 group-hover:scale-110 transition-transform">
+            <BookOpen className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          </div>
+          <div className="flex flex-col text-left">
+            <span className="text-[10px] sm:text-xs font-display font-black tracking-wider text-white">
+              STORY
+            </span>
+            <span className="text-[8px] sm:text-[9px] font-mono text-sky-400/80 -mt-0.5">
+              CHRONICLES
+            </span>
+          </div>
+        </button>
+      </div>
+
+      {/* CENTER AREA: CLEAN MAIN MENU (UNCLUTTERED) */}
+      <div className="flex flex-col items-center text-center my-auto pointer-events-auto max-w-md w-full px-3 sm:px-4">
         {/* BIG CLEAN TITLE */}
         <div className="mb-1 sm:mb-2">
           <h1 className="text-4xl sm:text-7xl font-display font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-white via-sky-200 to-sky-500 filter drop-shadow-[0_0_35px_rgba(56,189,248,0.65)]">
@@ -156,20 +132,20 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
           Survive uncharted cosmic hazards and guide Earth across infinite deep space.
         </p>
 
-        {/* PLAY BUTTON (Scaled down 20-25% on mobile only) */}
+        {/* BIG PLAY BUTTON */}
         <button
           onClick={() => {
             soundEngine.playClick();
             onStart();
           }}
-          className="group relative w-full max-w-[230px] sm:max-w-none sm:w-72 py-3 sm:py-4 px-6 sm:px-8 bg-gradient-to-r from-sky-500 via-blue-600 to-indigo-600 hover:from-sky-400 hover:to-blue-500 text-white font-black text-base sm:text-xl rounded-2xl sm:rounded-3xl shadow-[0_0_35px_rgba(56,189,248,0.6)] hover:shadow-[0_0_55px_rgba(56,189,248,0.85)] active:scale-95 transition-all duration-150 flex items-center justify-center gap-2.5 sm:gap-3 cursor-pointer ring-2 ring-sky-400/50"
+          className="group relative w-full max-w-[240px] sm:max-w-none sm:w-72 py-3.5 sm:py-4 px-6 sm:px-8 bg-gradient-to-r from-sky-500 via-blue-600 to-indigo-600 hover:from-sky-400 hover:to-blue-500 text-white font-black text-base sm:text-xl rounded-2xl sm:rounded-3xl shadow-[0_0_35px_rgba(56,189,248,0.6)] hover:shadow-[0_0_55px_rgba(56,189,248,0.85)] active:scale-95 transition-all duration-150 flex items-center justify-center gap-2.5 sm:gap-3 cursor-pointer ring-2 ring-sky-400/50 mb-3 sm:mb-4"
         >
           <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-white text-white group-hover:scale-110 transition-transform" />
           <span className="tracking-wider">PLAY</span>
         </button>
 
-        {/* CLEAN BUTTON ROW: SHOP, QUESTS, LEADERBOARD (Scaled down on mobile) */}
-        <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full max-w-[270px] sm:max-w-none sm:w-96 mt-3 sm:mt-4">
+        {/* CLEAN BUTTON ROW: SHOP, QUESTS, RANKS */}
+        <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full max-w-[280px] sm:max-w-none sm:w-96">
           {/* Shop */}
           <button
             onClick={() => {
@@ -182,7 +158,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             <span className="text-[10px] sm:text-xs font-bold tracking-tight">Shop</span>
           </button>
 
-          {/* Quests / Directives */}
+          {/* Quests */}
           <button
             onClick={() => {
               soundEngine.playClick();
@@ -199,13 +175,14 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             )}
           </button>
 
-          {/* Leaderboard */}
+          {/* Ranks (Opens Global Leaderboard Popup) */}
           <button
             onClick={() => {
               soundEngine.playClick();
               onOpenLeaderboard();
             }}
             className="flex flex-col items-center justify-center py-2 sm:py-3 px-1.5 sm:px-2 rounded-xl sm:rounded-2xl bg-slate-950/85 hover:bg-slate-900 border border-slate-800 hover:border-purple-500/50 text-slate-300 hover:text-white transition-all shadow-md active:scale-95 cursor-pointer"
+            title="Today's Top 10 Global Leaderboard"
           >
             <ListOrdered className="w-4 h-4 sm:w-5 sm:h-5 text-purple-400 mb-0.5 sm:mb-1" />
             <span className="text-[10px] sm:text-xs font-bold tracking-tight">Ranks</span>
@@ -213,8 +190,8 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         </div>
       </div>
 
-      {/* BOTTOM COMPACT CONTROLS HINT */}
-      <div className="pointer-events-none text-center">
+      {/* BOTTOM CONTROLS HINT */}
+      <div className="pointer-events-none text-center shrink-0">
         <p className="text-[9.5px] sm:text-xs font-mono text-slate-400 bg-slate-950/80 px-3 py-1 rounded-full border border-slate-800 shadow">
           {isMobile ? (
             <span>Tap Right to Jump &bull; Tap Left to Dive &bull; Tap Icons for Skills</span>

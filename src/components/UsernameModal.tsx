@@ -15,7 +15,7 @@ export const UsernameModal: React.FC<UsernameModalProps> = ({ onComplete, initia
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // Ensure input keeps focus and opens virtual keyboard on mobile smoothly
+    // Auto-focus input on mount
     const timer = setTimeout(() => {
       inputRef.current?.focus();
     }, 100);
@@ -30,7 +30,7 @@ export const UsernameModal: React.FC<UsernameModalProps> = ({ onComplete, initia
     const trimmed = username.trim();
     const formatCheck = LeaderboardManager.validateUsernameFormat(trimmed);
     if (!formatCheck.valid) {
-      setError(formatCheck.error || 'Invalid username');
+      setError(formatCheck.error || 'Nickname must be 2–12 alphanumeric characters');
       inputRef.current?.focus();
       return;
     }
@@ -39,18 +39,11 @@ export const UsernameModal: React.FC<UsernameModalProps> = ({ onComplete, initia
     setError(null);
 
     try {
-      // Query Cloud Firestore to check if username is already taken for today's date
-      const isTaken = await LeaderboardManager.isUsernameTakenToday(trimmed);
-      if (isTaken) {
-        setError('Username already taken');
+      // Check and reserve uniquely in Firebase Firestore
+      const result = await LeaderboardManager.reserveNickname(trimmed);
+      if (!result.success) {
+        setError(result.error || 'Nickname is already taken, please try another!');
         inputRef.current?.focus();
-        setIsChecking(false);
-        return;
-      }
-
-      const res = LeaderboardManager.setUsername(trimmed);
-      if (!res.success) {
-        setError(res.error || 'Failed to save username');
         setIsChecking(false);
         return;
       }
@@ -67,7 +60,6 @@ export const UsernameModal: React.FC<UsernameModalProps> = ({ onComplete, initia
     <div
       className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 z-50 animate-fadeIn select-none"
       onMouseDown={(e) => {
-        // Prevent background clicks from blurring the active input
         if (e.target !== inputRef.current) {
           inputRef.current?.focus();
         }
@@ -83,7 +75,7 @@ export const UsernameModal: React.FC<UsernameModalProps> = ({ onComplete, initia
           PILOT REGISTRATION
         </h3>
         <p className="text-xs text-slate-400 mb-4 sm:mb-5 leading-relaxed">
-          Welcome to <strong className="text-sky-300">Earth Fall</strong>! Choose your cosmic callsign to record your scores on the Global Leaderboard.
+          Welcome to <strong className="text-sky-300">Earth Fall</strong>! Choose your cosmic nickname to record your scores on the Global Leaderboard.
         </p>
 
         <form
@@ -102,15 +94,15 @@ export const UsernameModal: React.FC<UsernameModalProps> = ({ onComplete, initia
                 setError(null);
               }}
               onKeyDown={(e) => {
-                // Ensure S, W, Space, and all characters type cleanly without triggering game actions
+                // Ensure S, W, Space, and all keys type properly into input
                 e.stopPropagation();
               }}
               onKeyUp={(e) => e.stopPropagation()}
-              placeholder="Enter your username"
-              maxLength={15}
+              placeholder="Enter your nickname"
+              maxLength={12}
               autoFocus
               inputMode="text"
-              autoComplete="username"
+              autoComplete="off"
               autoCorrect="off"
               autoCapitalize="none"
               spellCheck="false"
@@ -120,14 +112,14 @@ export const UsernameModal: React.FC<UsernameModalProps> = ({ onComplete, initia
           </div>
 
           {error && (
-            <div className="flex items-center gap-1.5 text-xs text-rose-400 font-mono text-left bg-rose-950/40 border border-rose-800/60 p-2.5 rounded-xl">
+            <div className="flex items-center gap-1.5 text-xs text-rose-400 font-mono text-left bg-rose-950/60 border border-rose-600 p-2.5 rounded-xl shadow-[0_0_15px_rgba(244,63,94,0.3)]">
               <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-              <span>{error}</span>
+              <span className="font-semibold text-rose-200">{error}</span>
             </div>
           )}
 
           <div className="text-[11px] font-mono text-slate-500 text-left px-1">
-            &bull; 3–15 characters (letters, numbers, _)
+            &bull; Up to 12 alphanumeric characters (letters and numbers only)
           </div>
 
           <button
@@ -136,7 +128,7 @@ export const UsernameModal: React.FC<UsernameModalProps> = ({ onComplete, initia
             className="w-full mt-1 sm:mt-2 py-2.5 sm:py-3 px-6 bg-gradient-to-r from-sky-500 via-blue-600 to-indigo-600 hover:from-sky-400 hover:to-blue-500 disabled:opacity-60 text-white font-black rounded-2xl shadow-[0_0_25px_rgba(56,189,248,0.5)] active:scale-95 transition-all text-xs sm:text-sm tracking-wider cursor-pointer flex items-center justify-center gap-2"
           >
             {isChecking && <Loader2 className="w-4 h-4 animate-spin text-white" />}
-            <span>{isChecking ? 'VERIFYING...' : 'SAVE & LAUNCH'}</span>
+            <span>{isChecking ? 'VERIFYING...' : 'CONFIRM NICKNAME'}</span>
           </button>
         </form>
       </div>

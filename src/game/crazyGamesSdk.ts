@@ -92,6 +92,17 @@ class CrazyGamesManager {
     return this.isAvailable;
   }
 
+  public async getUser(): Promise<any | null> {
+    try {
+      if (typeof window !== 'undefined' && window.CrazyGames?.SDK?.user?.getUser) {
+        return await window.CrazyGames.SDK.user.getUser();
+      }
+    } catch (e) {
+      console.warn('[CrazyGames SDK] getUser notice:', e);
+    }
+    return null;
+  }
+
   public gameplayStart() {
     try {
       if (this.isAvailable && window.CrazyGames?.SDK?.game?.gameplayStart) {
