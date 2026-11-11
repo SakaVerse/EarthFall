@@ -1,5 +1,5 @@
 import React from 'react';
-import { Volume2, VolumeX, Play, Settings, Trophy, ShoppingBag, Target, ListOrdered, BookOpen } from 'lucide-react';
+import { Volume2, VolumeX, Play, Settings, Trophy, ShoppingBag, Target, ListOrdered, BookOpen, HelpCircle } from 'lucide-react';
 import { soundEngine } from '../game/audio';
 import { DailyMissionsManager } from '../game/dailyMissions';
 import { CosmeticsManager } from '../game/cosmetics';
@@ -11,6 +11,7 @@ interface TitleScreenProps {
   onOpenMissions: () => void;
   onOpenLeaderboard: () => void;
   onOpenStory: () => void;
+  onOpenGuide: () => void;
   onSettings: () => void;
   bestScore: number;
   muted: boolean;
@@ -24,6 +25,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
   onOpenMissions,
   onOpenLeaderboard,
   onOpenStory,
+  onOpenGuide,
   onSettings,
   bestScore,
   muted,
@@ -65,6 +67,19 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
             <span className="text-xs">🪙</span>
             <span className="text-xs sm:text-sm font-mono-numbers font-black">{scrapBalance}</span>
           </div>
+
+          {/* Quick Guide / How To Play */}
+          <button
+            onClick={() => {
+              soundEngine.playClick();
+              onOpenGuide();
+            }}
+            className="mobile-header-btn p-1.5 sm:p-2.5 rounded-xl sm:rounded-2xl bg-slate-950/85 hover:bg-slate-900 border border-sky-500/40 text-sky-300 hover:text-white transition-all shadow-md active:scale-95 cursor-pointer flex items-center gap-1"
+            title="Guide: Controls, Abilities & Obstacles"
+          >
+            <HelpCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-400" />
+            <span className="hidden sm:inline text-[10px] font-mono font-bold">GUIDE</span>
+          </button>
 
           {/* Quick Mute Toggle */}
           <button
@@ -190,15 +205,23 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
         </div>
       </div>
 
-      {/* BOTTOM CONTROLS HINT */}
-      <div className="pointer-events-none text-center shrink-0 pb-1">
-        <p className="text-[8.5px] sm:text-xs font-mono text-slate-400 bg-slate-950/80 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full border border-slate-800 shadow">
+      {/* BOTTOM CONTROLS HINT & GUIDE BUTTON */}
+      <div className="pointer-events-auto text-center shrink-0 pb-1">
+        <button
+          onClick={() => {
+            soundEngine.playClick();
+            onOpenGuide();
+          }}
+          className="text-[8.5px] sm:text-xs font-mono text-slate-300 hover:text-white bg-slate-950/85 hover:bg-slate-900 px-3 py-1 rounded-full border border-sky-500/30 hover:border-sky-400 shadow cursor-pointer transition-all flex items-center gap-1.5 mx-auto active:scale-95"
+          title="Click to view all controls, abilities, and obstacles guide"
+        >
+          <HelpCircle className="w-3 h-3 text-sky-400 shrink-0" />
           {isMobile ? (
-            <span>Tap Right to Jump &bull; Tap Left to Dive &bull; Tap Icons for Skills</span>
+            <span>Tap to View Controls, Abilities & Obstacles Guide</span>
           ) : (
-            <span>SPACE to Jump &bull; S/DOWN to Dive &bull; Q / E / F for Skills</span>
+            <span>SPACE to Jump &bull; S to Dive &bull; Q / E / F for Skills (Click for Guide)</span>
           )}
-        </p>
+        </button>
       </div>
     </div>
   );

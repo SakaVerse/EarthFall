@@ -105,7 +105,7 @@ class CrazyGamesManager {
 
   public gameplayStart() {
     try {
-      if (this.isAvailable && window.CrazyGames?.SDK?.game?.gameplayStart) {
+      if (typeof window !== 'undefined' && window.CrazyGames?.SDK?.game?.gameplayStart) {
         window.CrazyGames.SDK.game.gameplayStart();
       }
     } catch (e) {
@@ -115,7 +115,7 @@ class CrazyGamesManager {
 
   public gameplayStop() {
     try {
-      if (this.isAvailable && window.CrazyGames?.SDK?.game?.gameplayStop) {
+      if (typeof window !== 'undefined' && window.CrazyGames?.SDK?.game?.gameplayStop) {
         window.CrazyGames.SDK.game.gameplayStop();
       }
     } catch (e) {

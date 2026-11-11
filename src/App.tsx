@@ -21,6 +21,7 @@ import { CosmeticsManager } from './game/cosmetics';
 import { DailyMissionsManager } from './game/dailyMissions';
 import { AuthService } from './firebase/authService';
 import { CloudService } from './firebase/cloudService';
+import { crazyGames } from './game/crazyGamesSdk';
 import { detectDevice } from './utils/device';
 import { RotateCw } from 'lucide-react';
 
@@ -112,6 +113,21 @@ export default function App() {
     };
   }, []);
 
+  // Safe initialization of CrazyGames SDK v3 wrapped in try/catch for QA & cross-platform support
+  useEffect(() => {
+    const initCrazyGames = async () => {
+      try {
+        if (typeof window !== 'undefined' && window.CrazyGames?.SDK?.init) {
+          await window.CrazyGames.SDK.init();
+          console.log('[CrazyGames SDK] Successfully initialized v3 on app mount');
+        }
+      } catch (err) {
+        console.warn('[CrazyGames SDK] Initialization safe catch:', err);
+      }
+    };
+    initCrazyGames();
+  }, []);
+
   // Initialize Game Engine on Mount
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -122,12 +138,16 @@ export default function App() {
     engine.onStateChange = (newState) => {
       setGameState(newState);
       if (newState === 'PLAYING') {
+        crazyGames.gameplayStart();
         LeaderboardManager.recordGamePlayed();
         if (!soundEngine.isMuted()) {
           soundEngine.startMusic();
         }
       } else {
         soundEngine.stopMusic();
+      }
+      if (newState === 'PAUSED' || newState === 'GAME_OVER' || newState === 'TITLE') {
+        crazyGames.gameplayStop();
       }
       if (newState === 'GAME_OVER') {
         const runScore = engine.stats.score;
@@ -355,27 +375,32 @@ export default function App() {
     }
 
     if (engineRef.current) {
+      crazyGames.gameplayStart();
       engineRef.current.startGame();
     }
   }, []);
 
   const handleStartStory = useCallback(() => {
+    crazyGames.gameplayStop();
     setGameState('STORY_INTRO');
   }, []);
 
   const handleStoryComplete = useCallback(() => {
     if (engineRef.current) {
+      crazyGames.gameplayStart();
       engineRef.current.startGame();
     }
   }, []);
 
   const handlePause = useCallback(() => {
+    crazyGames.gameplayStop();
     if (engineRef.current) {
       engineRef.current.pauseGame();
     }
   }, []);
 
   const handleResume = useCallback(() => {
+    crazyGames.gameplayStart();
     if (engineRef.current) {
       engineRef.current.resumeGame();
     }
@@ -387,11 +412,13 @@ export default function App() {
     }
     setIsNewBestAnimating(false);
     if (engineRef.current) {
+      crazyGames.gameplayStart();
       engineRef.current.startGame();
     }
   }, []);
 
   const handleHome = useCallback(() => {
+    crazyGames.gameplayStop();
     if (newBestTimerRef.current) {
       clearTimeout(newBestTimerRef.current);
     }
@@ -481,6 +508,7 @@ export default function App() {
             onOpenMissions={() => setShowDailyMissions(true)}
             onOpenLeaderboard={() => setShowLeaderboard(true)}
             onOpenStory={() => setShowStoryModal(true)}
+            onOpenGuide={() => setShowHowToPlay(true)}
             onSettings={() => setShowSettings(true)}
             bestScore={bestScore}
             muted={settings.sound.muted}
@@ -534,6 +562,7 @@ export default function App() {
             onRestart={handleRestart}
             onHome={handleHome}
             onOpenShop={() => setShowSkinShop(true)}
+            onOpenGuide={() => setShowHowToPlay(true)}
             muted={settings.sound.muted}
             isMobile={isMobileActive}
             onToggleMute={handleToggleMute}
@@ -563,6 +592,7 @@ export default function App() {
             onRestart={handleRestart}
             onHome={handleHome}
             onOpenLeaderboard={() => setShowLeaderboard(true)}
+            onOpenGuide={() => setShowHowToPlay(true)}
             isMobile={isMobileActive}
           />
         )}

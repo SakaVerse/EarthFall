@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { RotateCcw, Home, Trophy, Coins, Compass, ListOrdered } from 'lucide-react';
+import { RotateCcw, Home, Trophy, Coins, Compass, ListOrdered, HelpCircle } from 'lucide-react';
 import { PlayerStats } from '../game/types';
 import { ZONES } from '../game/constants';
 import { soundEngine } from '../game/audio';
@@ -12,6 +12,7 @@ interface GameOverModalProps {
   onRestart: () => void;
   onHome: () => void;
   onOpenLeaderboard: () => void;
+  onOpenGuide?: () => void;
   isMobile: boolean;
 }
 
@@ -22,6 +23,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
   onRestart,
   onHome,
   onOpenLeaderboard,
+  onOpenGuide,
   isMobile,
 }) => {
   const isNewRecord = stats.score >= bestScore && stats.score > 0;
@@ -156,6 +158,19 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
               <span>MAIN MENU</span>
             </button>
           </div>
+
+          {onOpenGuide && (
+            <button
+              onClick={() => {
+                soundEngine.playClick();
+                onOpenGuide();
+              }}
+              className="text-[10px] sm:text-xs font-mono text-sky-400 hover:text-sky-300 hover:underline flex items-center justify-center gap-1 cursor-pointer pt-1"
+            >
+              <HelpCircle className="w-3 h-3 text-sky-400" />
+              <span>View Controls, Abilities & Obstacles Guide</span>
+            </button>
+          )}
         </div>
       </div>
     </div>
