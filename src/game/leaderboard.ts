@@ -3,18 +3,19 @@ import { LeaderboardEntry } from './types';
 const USERNAME_KEY = 'earthfall_username';
 const LEADERBOARD_KEY = 'earthfall_global_leaderboard';
 
-const DEFAULT_GLOBAL_PILOTS: LeaderboardEntry[] = [
-  { username: 'AstroNova', score: 184200, zone: 'Zone 5: The Unknown Universe', date: '2026-11-09' },
-  { username: 'VoidRunner_X', score: 142650, zone: 'Zone 4: Glacial Expanse', date: '2026-11-08' },
-  { username: 'CosmoCaptain', score: 119400, zone: 'Zone 4: Glacial Expanse', date: '2026-11-10' },
-  { username: 'StarGazer_77', score: 94800, zone: 'Zone 3: Dark Nebula Veil', date: '2026-11-07' },
-  { username: 'PulsarDrifter', score: 78250, zone: 'Zone 3: Dark Nebula Veil', date: '2026-11-09' },
-  { username: 'NebulaGhost', score: 62100, zone: 'Zone 2: Main Asteroid Belt', date: '2026-11-06' },
-  { username: 'SolarisPrime', score: 49900, zone: 'Zone 2: Main Asteroid Belt', date: '2026-11-10' },
-  { username: 'OrionHunter', score: 36450, zone: 'Zone 2: Main Asteroid Belt', date: '2026-11-05' },
-  { username: 'ZeroG_Pilot', score: 24100, zone: 'Zone 1: Solar System Outskirts', date: '2026-11-08' },
-  { username: 'TerraEcho', score: 15200, zone: 'Zone 1: Solar System Outskirts', date: '2026-11-04' },
-];
+// Bot names to filter out completely from any stored data
+const BOT_NAMES = new Set([
+  'astronova',
+  'voidrunner_x',
+  'cosmocaptain',
+  'stargazer_77',
+  'pulsardrifter',
+  'nebulaghost',
+  'solarisprime',
+  'orionhunter',
+  'zerog_pilot',
+  'terraecho',
+]);
 
 export class LeaderboardManager {
   public static getUsername(): string | null {
@@ -63,19 +64,6 @@ export class LeaderboardManager {
     const trimmed = name.trim();
     try {
       localStorage.setItem(USERNAME_KEY, trimmed);
-
-      // If user had existing entry under another name or needs initial record
-      const raw = this.getRawLeaderboard();
-      const existingIdx = raw.findIndex((e) => e.username.toLowerCase() === trimmed.toLowerCase());
-      if (existingIdx === -1) {
-        raw.push({
-          username: trimmed,
-          score: 0,
-          zone: 'Zone 1: Solar System Outskirts',
-          date: new Date().toISOString().split('T')[0],
-        });
-        this.saveRawLeaderboard(raw);
-      }
       return { success: true };
     } catch {
       return { success: false, error: 'Could not access storage' };
@@ -87,12 +75,36 @@ export class LeaderboardManager {
       const data = localStorage.getItem(LEADERBOARD_KEY);
       if (data) {
         const parsed = JSON.parse(data);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+        if (Array.isArray(parsed)) {
+          // Strictly purge all bot names and invalid entries
+          const realEntries: LeaderboardEntry[] = parsed.filter(
+            (e) =>
+              e &&
+              typeof e.username === 'string' &&
+              !BOT_NAMES.has(e.username.trim().toLowerCase()) &&
+              typeof e.score === 'number' &&
+              e.score > 0
+          );
+
+          // Deduplicate if needed (keep highest score per username)
+          const map = new Map<string, LeaderboardEntry>();
+          for (const entry of realEntries) {
+            const key = entry.username.trim().toLowerCase();
+            const existing = map.get(key);
+            if (!existing || entry.score > existing.score) {
+              map.set(key, entry);
+            }
+          }
+
+          const cleaned = Array.from(map.values());
+          if (cleaned.length !== parsed.length) {
+            this.saveRawLeaderboard(cleaned);
+          }
+          return cleaned;
         }
       }
     } catch {}
-    return [...DEFAULT_GLOBAL_PILOTS];
+    return [];
   }
 
   private static saveRawLeaderboard(entries: LeaderboardEntry[]): void {
@@ -102,13 +114,16 @@ export class LeaderboardManager {
   }
 
   public static submitScore(score: number, zoneName: string): LeaderboardEntry[] {
+    if (score <= 0) return this.getLeaderboard();
+
     const username = this.getUsername();
     if (!username) return this.getLeaderboard();
 
     const raw = this.getRawLeaderboard();
-    const existing = raw.find((e) => e.username.toLowerCase() === username.toLowerCase());
+    const existing = raw.find((e) => e.username.trim().toLowerCase() === username.trim().toLowerCase());
 
     if (existing) {
+      // If player beats their old score, update their existing rank, do NOT create a duplicate entry
       if (score > existing.score) {
         existing.score = score;
         existing.zone = zoneName;
@@ -116,13 +131,15 @@ export class LeaderboardManager {
       }
     } else {
       raw.push({
-        username,
+        username: username.trim(),
         score,
         zone: zoneName,
         date: new Date().toISOString().split('T')[0],
       });
     }
 
+    // Real-time sorting: descending by score
+    raw.sort((a, b) => b.score - a.score);
     this.saveRawLeaderboard(raw);
     return this.getLeaderboard();
   }

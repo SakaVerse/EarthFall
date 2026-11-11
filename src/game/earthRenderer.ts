@@ -21,7 +21,8 @@ interface EarthRenderOptions {
   cloudRotation: number;
   verticalTilt: number;
   health: number; // 0 to 100
-  stamina?: number; // In-game stamina bar near player
+  jumpsRemaining?: number; // In-game jumps counter near player (e.g. 7/10 Jumps)
+  maxJumps?: number;
   isShielded: boolean;
   isBoosted: boolean;
   isMagnetized: boolean;
@@ -112,7 +113,8 @@ export function renderEarth(ctx: CanvasRenderingContext2D, opts: EarthRenderOpti
     cloudRotation,
     verticalTilt,
     health,
-    stamina,
+    jumpsRemaining,
+    maxJumps,
     isShielded,
     isBoosted,
     isMagnetized,
@@ -199,9 +201,9 @@ export function renderEarth(ctx: CanvasRenderingContext2D, opts: EarthRenderOpti
     drawGravitationalFlux(ctx, radius, time);
   }
 
-  // 7. IN-GAME CLEAR STAMINA BAR NEAR PLAYER
-  if (typeof stamina === 'number') {
-    drawNearPlayerStaminaBar(ctx, radius, stamina);
+  // 7. IN-GAME CLEAR JUMPS COUNTER NEAR PLAYER (e.g. 7/10 Jumps)
+  if (typeof jumpsRemaining === 'number') {
+    drawNearPlayerJumpsCounter(ctx, radius, jumpsRemaining, maxJumps ?? 10, time);
   }
 
   ctx.restore();
@@ -245,31 +247,68 @@ function drawGoldenCrown(ctx: CanvasRenderingContext2D, radius: number, time: nu
   ctx.restore();
 }
 
-function drawNearPlayerStaminaBar(ctx: CanvasRenderingContext2D, radius: number, stamina: number) {
-  const barW = 44;
-  const barH = 5;
-  const barX = -barW / 2;
-  const barY = radius + 12;
-  const pct = Math.max(0, Math.min(100, stamina)) / 100;
-
+function drawNearPlayerJumpsCounter(
+  ctx: CanvasRenderingContext2D,
+  radius: number,
+  jumpsRemaining: number,
+  maxJumps: number,
+  time: number
+) {
   ctx.save();
-  // Pill background
-  ctx.fillStyle = 'rgba(2, 6, 23, 0.85)';
-  ctx.strokeStyle = 'rgba(56, 189, 248, 0.5)';
-  ctx.lineWidth = 1;
+  const isLow = jumpsRemaining <= 3;
+  const badgeY = radius + 14;
+  const text = `${jumpsRemaining}/${maxJumps} Jumps`;
+
+  ctx.font = 'bold 11px var(--font-mono), monospace';
+  const textMetrics = ctx.measureText(text);
+  const textW = textMetrics.width;
+  const badgeW = Math.max(textW + 16, 68);
+  const badgeH = 18;
+  const badgeX = -badgeW / 2;
+
+  // Background and border
+  if (isLow) {
+    const pulse = Math.sin(time * 14) * 0.35 + 0.65; // Warning flash
+    ctx.fillStyle = `rgba(159, 18, 57, ${0.85 * pulse})`;
+    ctx.strokeStyle = '#f43f5e';
+    ctx.lineWidth = 1.5;
+    ctx.shadowColor = '#f43f5e';
+    ctx.shadowBlur = 12 * pulse;
+  } else {
+    ctx.fillStyle = 'rgba(2, 6, 23, 0.88)';
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.6)';
+    ctx.lineWidth = 1;
+    ctx.shadowColor = '#38bdf8';
+    ctx.shadowBlur = 6;
+  }
+
   ctx.beginPath();
-  ctx.roundRect(barX - 1.5, barY - 1.5, barW + 3, barH + 3, 3);
+  ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 6);
   ctx.fill();
   ctx.stroke();
 
-  // Stamina fill
-  const color = pct < 0.25 ? '#ef4444' : '#38bdf8';
-  ctx.fillStyle = color;
-  ctx.shadowColor = color;
-  ctx.shadowBlur = 8;
-  ctx.beginPath();
-  ctx.roundRect(barX, barY, Math.max(2, barW * pct), barH, 2);
-  ctx.fill();
+  // Text inside badge
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = isLow ? '#ffe4e6' : '#e0f2fe';
+  ctx.fillText(text, 0, badgeY + badgeH / 2);
+
+  // Jump indicator pip dots below the counter
+  const pipCount = maxJumps;
+  const pipSpacing = 5.2;
+  const pipW = 3.2;
+  const totalPipsW = pipCount * pipSpacing;
+  const pipsStartX = -totalPipsW / 2 + (pipSpacing - pipW) / 2;
+  const pipsY = badgeY + badgeH + 3.5;
+
+  for (let i = 0; i < pipCount; i++) {
+    const px = pipsStartX + i * pipSpacing;
+    const hasJump = i < jumpsRemaining;
+    ctx.fillStyle = hasJump
+      ? (isLow ? '#f43f5e' : '#38bdf8')
+      : 'rgba(51, 65, 85, 0.6)';
+    ctx.fillRect(px, pipsY, pipW, 2.5);
+  }
 
   ctx.restore();
 }

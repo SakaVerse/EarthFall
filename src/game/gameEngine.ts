@@ -58,7 +58,8 @@ export class GameEngine {
     activePowerUps: ActivePowerUp[],
     zoneBanner: string | null,
     skills: ActiveSkill[],
-    stamina: number,
+    jumpsRemaining: number,
+    maxJumps: number,
     isGrounded: boolean,
     isGroundHazardActive: boolean,
     scrapBalance: number
@@ -67,12 +68,12 @@ export class GameEngine {
   // Active Skills Map
   public skills: Map<SkillType, ActiveSkill> = new Map();
 
-  // Stamina & Jump system: triple jump and slower drain
-  public earthStamina = 100;
-  public maxStamina = 100;
-  public readonly JUMP_STAMINA_COST = 10; // Drain slower (was 22)
+  // Jump system: 10 limited jumps, refills ONLY on landing on the ground
   public jumpCount = 0;
-  public readonly MAX_JUMPS = 3; // Triple jump
+  public readonly MAX_JUMPS = 10;
+  public get jumpsRemaining(): number {
+    return Math.max(0, this.MAX_JUMPS - this.jumpCount);
+  }
 
   // Floating text feedback (+50, +Atmosphere, +1 Scrap)
   public floatingTexts: FloatingText[] = [];
@@ -171,8 +172,7 @@ export class GameEngine {
     this.earthY = CANVAS_VIRTUAL_HEIGHT / 2;
     this.earthVy = 0;
     this.earthHealth = MAX_HEALTH;
-    this.earthStamina = this.maxStamina;
-    this.jumpCount = 0;
+    this.jumpCount = 0; // Starts at 10/10 Jumps
     this.floatingTexts = [];
     this.zoneFlashTimer = 0;
     this.atmosphereWarningCooldown = 0;
@@ -426,23 +426,17 @@ export class GameEngine {
       return;
     }
 
-    // Give Earth MORE jumps: increase to 3 jumps (triple jump)
+    // 10 limited jumps: allow up to 10 jumps before requiring ground landing
     if (this.jumpCount >= this.MAX_JUMPS) {
       return;
     }
 
     this.jumpCount++;
-
-    // Stamina drains slower (10 instead of 22) and NEVER blocks normal movement
-    this.earthStamina = Math.max(0, this.earthStamina - this.JUMP_STAMINA_COST);
-
     this.earthVy = JUMP_IMPULSE;
     const trailColor = this.equippedSkin?.trailColor || '#38bdf8';
 
-    // Add small ring effect on 2nd and 3rd jump!
-    if (this.jumpCount >= 2) {
-      this.particles.emitJumpRing(this.earthX, this.earthY, trailColor);
-    }
+    // Add small ring effect on EACH jump!
+    this.particles.emitJumpRing(this.earthX, this.earthY, trailColor);
 
     this.particles.emitContinuousExhaust(this.earthX, this.earthY, this.hasPowerUp('COSMIC_BOOST'), this.equippedSkin);
     soundEngine.playJump();
@@ -593,7 +587,7 @@ export class GameEngine {
     this.stats.score += Math.round(this.gameSpeed * dt * 0.1 * scoreMult);
     DailyMissionsManager.recordProgress('distance', Math.round(distDelta));
 
-    // Inform UI with active skills, stamina, and scrap
+    // Inform UI with active skills, jumps remaining (e.g. 7/10 Jumps), and scrap
     if (this.onStatsUpdate) {
       this.onStatsUpdate(
         this.stats,
@@ -601,7 +595,8 @@ export class GameEngine {
         Array.from(this.activePowerUps.values()),
         this.zoneBanner,
         Array.from(this.skills.values()),
-        this.earthStamina,
+        this.jumpsRemaining,
+        this.MAX_JUMPS,
         this.isGrounded,
         this.isGroundHazardActive,
         CosmeticsManager.getScrapBalance()
@@ -635,11 +630,9 @@ export class GameEngine {
     if (isTouchingFloor) {
       this.earthY = maxY;
       this.earthVy = 0;
-      this.jumpCount = 0; // Reset triple jump count on ground touch!
-
-      // STAMINA REFILL:
-      // Auto-refills fast when Earth touches the ground
-      this.earthStamina = Math.min(this.maxStamina, this.earthStamina + dt * 85);
+      // JUMP COUNTER RESETS ONLY WHEN EARTH LANDS / TOUCHES THE GROUND:
+      // Instantly refills back to 10/10 Jumps on landing!
+      this.jumpCount = 0;
 
       // GROUND HUGGING ANTI-CHEAT:
       // If player rides the floor without jumping for > 1.1s, friction burn damages Earth
@@ -663,11 +656,9 @@ export class GameEngine {
         this.isGroundHazardActive = false;
       }
     } else {
-      // In mid-air, reset ground contact timer and hazard
+      // In mid-air, reset ground contact timer and hazard (jumps do NOT refill in air)
       this.groundContactTimer = 0;
       this.isGroundHazardActive = false;
-      // In mid-air, stamina regens smoothly when not jumping/dashing
-      this.earthStamina = Math.min(this.maxStamina, this.earthStamina + dt * 20);
     }
 
     // Invincibility timer
@@ -1381,7 +1372,8 @@ export class GameEngine {
       cloudRotation: this.earthCloudRotation,
       verticalTilt: this.earthVy / 300,
       health: this.earthHealth,
-      stamina: this.earthStamina,
+      jumpsRemaining: this.jumpsRemaining,
+      maxJumps: this.MAX_JUMPS,
       isShielded: this.hasPowerUp('SHIELD'),
       isBoosted: this.hasPowerUp('COSMIC_BOOST'),
       isMagnetized: this.hasPowerUp('MAGNET'),

@@ -88,7 +88,7 @@ export const HowToPlayModal: React.FC<HowToPlayModalProps> = ({ onClose, isMobil
                     <div className="bg-slate-900/90 p-3 rounded-xl border border-sky-500/30">
                       <span className="text-sky-300 font-mono font-bold block mb-1">RIGHT THUMB: THRUST / JUMP</span>
                       <p className="text-slate-300 text-xs leading-relaxed">
-                        Activates Earth’s atmospheric ion thrusters to fly upward. Costs stamina. A live circular stamina meter encircles the button.
+                        Activates Earth’s atmospheric ion thrusters to fly upward. Earth has 10 limited jumps. A live jump counter displays remaining jumps.
                       </p>
                     </div>
                     <div className="bg-slate-900/90 p-3 rounded-xl border border-amber-500/30">
@@ -105,7 +105,7 @@ export const HowToPlayModal: React.FC<HowToPlayModalProps> = ({ onClose, isMobil
                     </div>
                   </div>
                   <div className="mt-3 p-2.5 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-xs font-mono">
-                    ⚡ <span className="font-bold text-white">STAMINA TIP:</span> Touching the ground continuously charges your jump stamina back to 100%! Avoid hugging the floor for &gt;1.1s or surface friction will burn Earth’s biosphere.
+                    ⚡ <span className="font-bold text-white">JUMP SYSTEM TIP:</span> You have 10 limited jumps in mid-air. Landing on the ground instantly refills your jumps back to 10/10! When low (&le;3 jumps left), the counter flashes red. Avoid hugging the floor for &gt;1.1s or surface friction will burn Earth’s biosphere.
                   </div>
                 </div>
               ) : (
@@ -122,7 +122,7 @@ export const HowToPlayModal: React.FC<HowToPlayModalProps> = ({ onClose, isMobil
                     <div className="flex items-center justify-between bg-slate-900/90 p-3 rounded-xl border border-slate-800">
                       <div>
                         <span className="text-xs font-bold text-white block">Ascend / Ion Thrusters</span>
-                        <span className="text-[11px] text-slate-400">Costs stamina per jump. Recharges on ground touch.</span>
+                        <span className="text-[11px] text-slate-400">10 limited jumps. Recharges to 10/10 instantly on ground landing.</span>
                       </div>
                       <div className="flex gap-1.5 font-mono text-xs font-bold text-sky-300">
                         <span className="bg-slate-800 px-2 py-0.5 rounded border border-slate-700">SPACE</span>
@@ -164,7 +164,7 @@ export const HowToPlayModal: React.FC<HowToPlayModalProps> = ({ onClose, isMobil
                   </div>
 
                   <div className="mt-3 p-2.5 rounded-lg bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-xs font-mono">
-                    ⚡ <span className="font-bold text-white">STAMINA TIP:</span> Touching the ground continuously charges your jump stamina back to 100%! Avoid hugging the floor for &gt;1.1s or surface friction will burn Earth’s biosphere.
+                    ⚡ <span className="font-bold text-white">JUMP SYSTEM TIP:</span> You have 10 limited jumps in mid-air. Landing on the ground instantly refills your jumps back to 10/10! When low (&le;3 jumps left), the counter flashes red. Avoid hugging the floor for &gt;1.1s or surface friction will burn Earth’s biosphere.
                   </div>
                 </div>
               )}

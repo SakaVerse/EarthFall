@@ -254,6 +254,23 @@ export interface DailyMission {
   claimed: boolean;
 }
 
+export interface DailyStreakDay {
+  day: number;
+  reward: number;
+  isCompleted: boolean;
+  isToday: boolean;
+  isMilestone: boolean;
+}
+
+export interface DailyStreakData {
+  currentStreak: number;
+  bestStreak: number;
+  claimedToday: boolean;
+  todayReward: number;
+  days: DailyStreakDay[];
+  canClaim: boolean;
+}
+
 export interface HighScoreRecord {
   score: number;
   distance: number;

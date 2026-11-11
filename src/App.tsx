@@ -48,7 +48,8 @@ export default function App() {
     zone: 'solar_system',
   });
   const [health, setHealth] = useState(100);
-  const [stamina, setStamina] = useState(100);
+  const [jumpsRemaining, setJumpsRemaining] = useState<number>(10);
+  const [maxJumps, setMaxJumps] = useState<number>(10);
   const [isGrounded, setIsGrounded] = useState(false);
   const [isGroundHazardActive, setIsGroundHazardActive] = useState(false);
   const [scrapBalance, setScrapBalance] = useState<number>(() => CosmeticsManager.getScrapBalance());
@@ -131,7 +132,8 @@ export default function App() {
       newPowerUps,
       _zoneBanner,
       newSkills,
-      newStamina,
+      newJumpsRemaining,
+      newMaxJumps,
       newIsGrounded,
       newIsHazard,
       newScrap
@@ -142,8 +144,11 @@ export default function App() {
       if (newSkills) {
         setSkills([...newSkills]);
       }
-      if (typeof newStamina === 'number') {
-        setStamina(newStamina);
+      if (typeof newJumpsRemaining === 'number') {
+        setJumpsRemaining(newJumpsRemaining);
+      }
+      if (typeof newMaxJumps === 'number') {
+        setMaxJumps(newMaxJumps);
       }
       if (typeof newIsGrounded === 'boolean') {
         setIsGrounded(newIsGrounded);
@@ -158,6 +163,7 @@ export default function App() {
 
     engine.init();
     setBestScore(engine.getBestScore());
+    DailyMissionsManager.checkAndRecordStreak();
 
     return () => {
       engine.destroy();
@@ -174,9 +180,19 @@ export default function App() {
   // Global Keyboard Listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Disable all game key listeners while UsernameModal is active or any input is focused
+      if (
+        showUsernamePrompt ||
+        (e.target as HTMLElement)?.tagName === 'INPUT' ||
+        (e.target as HTMLElement)?.tagName === 'TEXTAREA' ||
+        (e.target as HTMLElement)?.isContentEditable
+      ) {
+        return;
+      }
+
       if (!engineRef.current) return;
 
-      // Prevent default scrolling for game keys
+      // Prevent default scrolling for game keys only when playing or on title
       if (['Space', 'ArrowUp', 'ArrowDown', 'KeyW', 'KeyS'].includes(e.code)) {
         e.preventDefault();
       }
@@ -336,6 +352,7 @@ export default function App() {
           <UsernameModal
             onComplete={(_name) => {
               setShowUsernamePrompt(false);
+              handleStartGame();
             }}
           />
         )}
@@ -365,7 +382,8 @@ export default function App() {
           <HUD
             stats={stats}
             health={health}
-            stamina={stamina}
+            jumpsRemaining={jumpsRemaining}
+            maxJumps={maxJumps}
             isGrounded={isGrounded}
             isGroundHazardActive={isGroundHazardActive}
             scrapBalance={scrapBalance}
@@ -387,7 +405,8 @@ export default function App() {
             onDive={() => engineRef.current?.applyDive()}
             skills={skills}
             onTriggerSkill={handleTriggerSkill}
-            stamina={stamina}
+            jumpsRemaining={jumpsRemaining}
+            maxJumps={maxJumps}
           />
         )}
 

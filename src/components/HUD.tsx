@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pause, Volume2, VolumeX, Zap, Compass, Heart, Radio, Sparkles, AlertTriangle } from 'lucide-react';
+import { Pause, Volume2, VolumeX, Zap, Compass, Heart, Radio, Sparkles, AlertTriangle, Rocket } from 'lucide-react';
 import { ActivePowerUp, ActiveSkill, PlayerStats, SkillType } from '../game/types';
 import { POWER_UP_CONFIG, ZONES } from '../game/constants';
 import { soundEngine } from '../game/audio';
@@ -8,7 +8,8 @@ import { LeaderboardManager } from '../game/leaderboard';
 interface HUDProps {
   stats: PlayerStats;
   health: number;
-  stamina?: number;
+  jumpsRemaining?: number;
+  maxJumps?: number;
   isGrounded?: boolean;
   isGroundHazardActive?: boolean;
   scrapBalance?: number;
@@ -25,7 +26,8 @@ interface HUDProps {
 export const HUD: React.FC<HUDProps> = ({
   stats,
   health,
-  stamina = 100,
+  jumpsRemaining = 10,
+  maxJumps = 10,
   isGrounded = false,
   isGroundHazardActive = false,
   scrapBalance = 0,
@@ -42,6 +44,7 @@ export const HUD: React.FC<HUDProps> = ({
   const isBoosted = activePowerUps.some((p) => p.type === 'COSMIC_BOOST');
   const healthPercent = Math.max(0, Math.min(100, health));
   const isAtmosphereLow = healthPercent < 25;
+  const isLowJumps = jumpsRemaining <= 3;
   const gamesPlayed = LeaderboardManager.getGamesPlayedCount();
   const showAbilitiesHint = gamesPlayed <= 3;
 
@@ -53,33 +56,33 @@ export const HUD: React.FC<HUDProps> = ({
     : 'from-amber-500 to-yellow-400 shadow-[0_0_12px_rgba(245,158,11,0.7)]';
 
   return (
-    <div className="absolute inset-0 pointer-events-none select-none flex flex-col justify-between p-2.5 sm:p-4 z-20 overflow-hidden">
+    <div className="absolute inset-0 pointer-events-none select-none flex flex-col justify-between p-2 sm:p-4 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.5rem,env(safe-area-inset-bottom))] pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] z-20 overflow-hidden">
       {/* TOP FLIGHT TELEMETRY CONSOLE */}
-      <div className="w-full flex items-start justify-between gap-2 max-w-full">
+      <div className="w-full flex items-start justify-between gap-1.5 sm:gap-2 max-w-full">
         {/* Left Cluster: Orbital Distance & Trajectory Score */}
-        <div className="flex flex-col gap-1 pointer-events-auto bg-slate-950/85 backdrop-blur-md border border-sky-500/30 px-3 py-2 sm:px-4 sm:py-2.5 rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.6)]">
+        <div className="flex flex-col gap-0.5 sm:gap-1 pointer-events-auto bg-slate-950/85 backdrop-blur-md border border-sky-500/30 px-2.5 py-1.5 sm:px-4 sm:py-2.5 rounded-xl sm:rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.6)]">
           <div className="flex items-baseline gap-1.5 sm:gap-2">
-            <span className="text-[9px] sm:text-[10px] font-mono uppercase text-sky-400 font-bold tracking-widest">
+            <span className="text-[8.5px] sm:text-[10px] font-mono uppercase text-sky-400 font-bold tracking-widest">
               SCORE
             </span>
-            <span className="text-lg sm:text-2xl md:text-3xl font-mono-numbers font-black text-white text-glow-cyan tracking-tight">
+            <span className="text-base sm:text-2xl md:text-3xl font-mono-numbers font-black text-white text-glow-cyan tracking-tight">
               {stats.score.toLocaleString()}
             </span>
             {isBoosted && (
-              <span className="text-[9px] font-black text-amber-300 bg-amber-950/90 px-1.5 py-0.5 rounded border border-amber-500/60 animate-pulse">
+              <span className="text-[8.5px] sm:text-[9px] font-black text-amber-300 bg-amber-950/90 px-1 py-0.2 sm:px-1.5 sm:py-0.5 rounded border border-amber-500/60 animate-pulse">
                 3X
               </span>
             )}
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3 text-xs font-mono-numbers text-slate-300">
-            <div className="flex items-center gap-1 text-sky-300 text-[11px] sm:text-xs">
+          <div className="flex items-center gap-1.5 sm:gap-3 text-xs font-mono-numbers text-slate-300">
+            <div className="flex items-center gap-1 text-sky-300 text-[10px] sm:text-xs">
               <Compass className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-sky-400" />
               <span className="font-bold">{Math.round(stats.distance).toLocaleString()}</span>
-              <span className="text-[9px] text-sky-400/80">LY</span>
+              <span className="text-[8.5px] sm:text-[9px] text-sky-400/80">LY</span>
             </div>
             <span className="text-slate-600">·</span>
-            <div className="flex items-center gap-1 text-slate-400 text-[10px] sm:text-[11px]">
+            <div className="flex items-center gap-1 text-slate-400 text-[9.5px] sm:text-[11px]">
               <span>BEST</span>
               <span className="text-slate-200 font-semibold">{Math.max(bestScore, stats.score).toLocaleString()}</span>
             </div>
@@ -94,10 +97,10 @@ export const HUD: React.FC<HUDProps> = ({
           </span>
         </div>
 
-        {/* Right Cluster: Earth Atmosphere, Stamina & Hardware Controls */}
-        <div className="flex flex-col items-end gap-1.5 pointer-events-auto">
+        {/* Right Cluster: Earth Atmosphere, Jumps Counter & Controls */}
+        <div className="flex flex-col items-end gap-1 sm:gap-1.5 pointer-events-auto">
           <div
-            className={`flex items-center gap-2 sm:gap-3 bg-slate-950/90 backdrop-blur-md px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.6)] transition-all ${
+            className={`flex items-center gap-1.5 sm:gap-2.5 bg-slate-950/90 backdrop-blur-md px-2 py-1.5 sm:px-3 sm:py-2.5 rounded-xl sm:rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.6)] transition-all ${
               isAtmosphereLow
                 ? 'border-2 border-red-500 shadow-[0_0_24px_rgba(239,68,68,0.7)] animate-pulse'
                 : 'border border-sky-500/25'
@@ -105,16 +108,16 @@ export const HUD: React.FC<HUDProps> = ({
           >
             {/* Atmosphere Integrity Gauge */}
             <div className="flex flex-col items-end">
-              <div className="flex items-center gap-1 mb-1">
+              <div className="flex items-center gap-1 mb-0.5 sm:mb-1">
                 <Heart className={`w-3 h-3 sm:w-3.5 sm:h-3.5 ${isAtmosphereLow ? 'text-rose-500 animate-ping' : 'text-emerald-400'}`} />
-                <span className={`text-[9px] sm:text-[10px] font-mono font-bold uppercase ${isAtmosphereLow ? 'text-red-400 font-black' : 'text-slate-400'}`}>
+                <span className={`text-[8.5px] sm:text-[10px] font-mono font-bold uppercase ${isAtmosphereLow ? 'text-red-400 font-black' : 'text-slate-400'}`}>
                   ATMOSPHERE
                 </span>
-                <span className={`text-[11px] sm:text-xs font-mono-numbers font-black ${isAtmosphereLow ? 'text-rose-300' : 'text-white'}`}>
+                <span className={`text-[10px] sm:text-xs font-mono-numbers font-black ${isAtmosphereLow ? 'text-rose-300' : 'text-white'}`}>
                   {Math.round(healthPercent)}%
                 </span>
               </div>
-              <div className="w-20 sm:w-28 h-2 sm:h-2.5 bg-slate-900 border border-slate-700/60 rounded-full overflow-hidden p-0.5">
+              <div className="w-16 sm:w-24 h-1.5 sm:h-2 bg-slate-900 border border-slate-700/60 rounded-full overflow-hidden p-0.5">
                 <div
                   className={`h-full transition-all duration-150 rounded-full bg-gradient-to-r ${healthBarColor}`}
                   style={{ width: `${healthPercent}%` }}
@@ -122,50 +125,60 @@ export const HUD: React.FC<HUDProps> = ({
               </div>
             </div>
 
-            <div className="h-6 sm:h-7 w-px bg-slate-800" />
+            <div className="h-5 sm:h-7 w-px bg-slate-800" />
 
-            {/* Jump Stamina Gauge (PC HUD) */}
-            {!isMobile && (
-              <>
-                <div className="flex flex-col items-end">
-                  <div className="flex items-center gap-1 mb-1">
-                    <Sparkles className="w-3 h-3 text-cyan-400" />
-                    <span className="text-[9px] sm:text-[10px] font-mono font-bold uppercase text-slate-400">STAMINA</span>
-                    <span className="text-[11px] sm:text-xs font-mono-numbers font-black text-cyan-200">{Math.round(stamina)}%</span>
-                  </div>
-                  <div className="w-16 sm:w-24 h-2 sm:h-2.5 bg-slate-900 border border-slate-700/60 rounded-full overflow-hidden p-0.5">
+            {/* JUMPS COUNTER (10 LIMITED JUMPS, RECOVER ON GROUND) */}
+            <div
+              className={`flex items-center gap-1.5 sm:gap-2 px-2 py-1 sm:px-2.5 sm:py-1 rounded-xl border transition-all ${
+                isLowJumps
+                  ? 'bg-rose-950/90 border-rose-500 shadow-[0_0_16px_rgba(244,63,94,0.6)] animate-pulse ring-1 ring-rose-400'
+                  : 'bg-slate-900/90 border-sky-500/40 shadow-sm'
+              }`}
+              title="10 Limited Jumps - Touch ground to recover"
+            >
+              <Rocket className={`w-3 h-3 sm:w-3.5 sm:h-3.5 ${isLowJumps ? 'text-rose-400' : 'text-sky-400'}`} />
+              <div className="flex flex-col items-end">
+                <span className={`text-[10px] sm:text-xs font-mono font-black ${
+                  isLowJumps ? 'text-rose-300' : 'text-sky-200'
+                }`}>
+                  {jumpsRemaining}/{maxJumps} Jumps
+                </span>
+                <div className="flex gap-0.5 mt-0.5">
+                  {Array.from({ length: maxJumps }).map((_, i) => (
                     <div
-                      className={`h-full transition-all duration-75 rounded-full ${
-                        stamina < 22
-                          ? 'bg-rose-500 shadow-[0_0_8px_#ef4444]'
-                          : 'bg-gradient-to-r from-cyan-500 to-sky-400 shadow-[0_0_8px_#22d3ee]'
+                      key={i}
+                      className={`h-1 w-1 sm:w-1.5 rounded-xs transition-all ${
+                        i < jumpsRemaining
+                          ? isLowJumps
+                            ? 'bg-rose-500 shadow-[0_0_4px_#f43f5e]'
+                            : 'bg-sky-400 shadow-[0_0_4px_#38bdf8]'
+                          : 'bg-slate-800'
                       }`}
-                      style={{ width: `${Math.max(0, Math.min(100, stamina))}%` }}
                     />
-                  </div>
+                  ))}
                 </div>
+              </div>
+            </div>
 
-                <div className="h-6 sm:h-7 w-px bg-slate-800" />
-              </>
-            )}
+            <div className="h-5 sm:h-7 w-px bg-slate-800" />
 
             {/* Space Currency & Collectibles */}
-            <div className="flex flex-col items-start gap-0.5 sm:gap-1">
+            <div className="flex flex-col items-start gap-0.5">
               <div className="flex items-center gap-1" title="Cosmic Energy Orbs">
                 <Zap className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-cyan-400 fill-cyan-400" />
-                <span className="text-[11px] sm:text-xs font-mono-numbers font-black text-cyan-300">
+                <span className="text-[10px] sm:text-xs font-mono-numbers font-black text-cyan-300">
                   {stats.energyCollected}
                 </span>
               </div>
               <div className="flex items-center gap-1" title="Space Scrap Balance">
-                <span className="text-[10px] sm:text-[11px]">⚙️</span>
-                <span className="text-[10px] sm:text-[11px] font-mono-numbers font-bold text-amber-300">
+                <span className="text-[9px] sm:text-[11px]">⚙️</span>
+                <span className="text-[9px] sm:text-[11px] font-mono-numbers font-bold text-amber-300">
                   {scrapBalance}
                 </span>
               </div>
             </div>
 
-            <div className="h-6 sm:h-7 w-px bg-slate-800" />
+            <div className="h-5 sm:h-7 w-px bg-slate-800" />
 
             {/* System Audio & Pause Buttons */}
             <div className="flex items-center gap-1">
@@ -174,7 +187,7 @@ export const HUD: React.FC<HUDProps> = ({
                   soundEngine.playClick();
                   onToggleMute();
                 }}
-                className="p-1.5 sm:p-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/60 transition-colors shadow-sm"
+                className="p-1 sm:p-2 rounded-lg sm:rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/60 transition-colors shadow-sm cursor-pointer"
                 title="Toggle Mute"
               >
                 {muted ? <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-400" /> : <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-400" />}
@@ -184,7 +197,7 @@ export const HUD: React.FC<HUDProps> = ({
                   soundEngine.playClick();
                   onPause();
                 }}
-                className="p-1.5 sm:p-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/60 transition-colors shadow-sm"
+                className="p-1 sm:p-2 rounded-lg sm:rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/60 transition-colors shadow-sm cursor-pointer"
                 title={isMobile ? 'Pause Flight' : 'Pause (ESC)'}
               >
                 <Pause className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -201,6 +214,10 @@ export const HUD: React.FC<HUDProps> = ({
           ) : isGroundHazardActive ? (
             <div className="text-[10px] sm:text-[11px] font-mono font-black text-rose-200 bg-rose-950/90 border border-rose-500 px-3 py-1 rounded-full animate-bounce shadow-[0_0_20px_#ef4444]">
               ⚠ SURFACE FRICTION CRITICAL — ASCEND NOW! ⚠
+            </div>
+          ) : isLowJumps && !isGrounded ? (
+            <div className="text-[9.5px] sm:text-[11px] font-mono font-black text-rose-200 bg-rose-950/90 border border-rose-500 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full animate-pulse shadow-[0_0_18px_#f43f5e]">
+              ⚡ {jumpsRemaining === 0 ? 'OUT OF JUMPS!' : `LOW JUMPS: ${jumpsRemaining}/${maxJumps}`} — TOUCH GROUND TO REFILL!
             </div>
           ) : stats.currentCombo >= 3 ? (
             <div className="text-[10px] sm:text-[11px] font-mono font-black text-amber-300 bg-amber-950/80 border border-amber-500/50 px-2.5 py-0.5 rounded-full animate-pulse shadow-md">
