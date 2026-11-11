@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { RotateCcw, Home, Trophy, Compass, Zap, Shield, Sparkles } from 'lucide-react';
+import { RotateCcw, Home, Trophy, Coins, Compass, ListOrdered } from 'lucide-react';
 import { PlayerStats } from '../game/types';
 import { ZONES } from '../game/constants';
 import { soundEngine } from '../game/audio';
@@ -7,21 +7,21 @@ import { soundEngine } from '../game/audio';
 interface GameOverModalProps {
   stats: PlayerStats;
   bestScore: number;
+  coinsEarned: number;
   onRestart: () => void;
   onHome: () => void;
+  onOpenLeaderboard: () => void;
   isMobile: boolean;
-  onRevive?: () => void;
-  canRevive?: boolean;
 }
 
 export const GameOverModal: React.FC<GameOverModalProps> = ({
   stats,
   bestScore,
+  coinsEarned,
   onRestart,
   onHome,
+  onOpenLeaderboard,
   isMobile,
-  onRevive,
-  canRevive = false,
 }) => {
   const isNewRecord = stats.score >= bestScore && stats.score > 0;
   const zoneConfig = ZONES[stats.zone];
@@ -42,49 +42,60 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
   }, [onRestart, onHome]);
 
   return (
-    <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 z-40 animate-fadeIn select-none">
-      <div className="w-full max-w-lg bg-slate-900/90 border border-slate-800 rounded-2xl shadow-[0_0_50px_rgba(239,68,68,0.2)] p-6 sm:p-8 flex flex-col items-center text-center">
+    <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 z-40 animate-fadeIn select-none overflow-y-auto">
+      <div className="w-full max-w-md bg-slate-900/95 border border-slate-800 rounded-3xl shadow-[0_0_50px_rgba(239,68,68,0.25)] p-5 sm:p-7 flex flex-col items-center text-center my-auto">
         {/* Header Badge */}
         {isNewRecord ? (
-          <div className="flex items-center gap-2 px-3.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/40 text-amber-300 text-xs font-mono font-bold tracking-widest mb-3 animate-pulse">
+          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/50 text-amber-300 text-xs font-mono font-bold tracking-widest mb-3 animate-pulse">
             <Trophy className="w-4 h-4 text-amber-400" />
-            <span>NEW ALL-TIME RECORD ACHIEVED</span>
+            <span>NEW ALL-TIME RECORD!</span>
           </div>
         ) : (
-          <span className="text-xs font-mono uppercase tracking-widest text-rose-400 font-semibold mb-2">
-            BIOSPHERE INTEGRITY COMPROMISED
+          <span className="text-[11px] font-mono uppercase tracking-widest text-rose-400 font-bold mb-2">
+            ATMOSPHERE DEPLETED — MISSION FAILED
           </span>
         )}
 
         {/* Main Title */}
-        <h2 className="text-3xl sm:text-4xl font-display font-black text-white tracking-wider mb-2 text-glow-red">
+        <h2 className="text-3xl sm:text-4xl font-display font-black text-white tracking-wider mb-1 text-glow-red">
           GAME OVER
         </h2>
-        <p className="text-xs sm:text-sm text-slate-400 mb-6 font-normal">
-          Earth drifted deep into the cold cosmos before succumbing to celestial hazards.
+        <p className="text-xs text-slate-400 mb-5 font-normal">
+          Earth drifted beyond survival threshold in deep space.
         </p>
 
-        {/* Telemetry Stats Grid */}
-        <div className="w-full grid grid-cols-2 gap-3 mb-6 text-left">
+        {/* Stats Grid: Final Score, Best Score, Coins Earned */}
+        <div className="w-full grid grid-cols-2 gap-2.5 mb-4 text-left">
           {/* Final Score */}
-          <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-3.5 flex flex-col">
-            <span className="text-[10px] font-mono uppercase text-slate-400">FINAL SCORE</span>
+          <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 flex flex-col">
+            <span className="text-[10px] font-mono uppercase text-slate-400 font-bold">FINAL SCORE</span>
             <span className="text-xl sm:text-2xl font-mono-numbers font-black text-white text-glow-cyan">
               {stats.score.toLocaleString()}
             </span>
           </div>
 
           {/* Best Record */}
-          <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-3.5 flex flex-col">
-            <span className="text-[10px] font-mono uppercase text-slate-400">ALL-TIME BEST</span>
+          <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 flex flex-col">
+            <span className="text-[10px] font-mono uppercase text-slate-400 font-bold">BEST SCORE</span>
             <span className="text-xl sm:text-2xl font-mono-numbers font-black text-amber-300">
               {Math.max(bestScore, stats.score).toLocaleString()}
             </span>
           </div>
 
+          {/* Coins / Scrap Earned */}
+          <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 flex flex-col">
+            <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase text-amber-400 font-bold mb-0.5">
+              <Coins className="w-3.5 h-3.5 text-amber-400" />
+              <span>COINS EARNED</span>
+            </div>
+            <span className="text-lg font-mono-numbers font-black text-amber-300">
+              +{coinsEarned}
+            </span>
+          </div>
+
           {/* Distance Traveled */}
-          <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-3.5 flex flex-col">
-            <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase text-slate-400 mb-0.5">
+          <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 flex flex-col">
+            <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase text-sky-400 font-bold mb-0.5">
               <Compass className="w-3.5 h-3.5 text-sky-400" />
               <span>DISTANCE</span>
             </div>
@@ -92,50 +103,37 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
               {Math.round(stats.distance).toLocaleString()} LY
             </span>
           </div>
-
-          {/* Energy Collected */}
-          <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-3.5 flex flex-col">
-            <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase text-slate-400 mb-0.5">
-              <Zap className="w-3.5 h-3.5 text-cyan-400" />
-              <span>ENERGY HARVESTED</span>
-            </div>
-            <span className="text-lg font-mono-numbers font-bold text-cyan-300">
-              {stats.energyCollected} ORBS
-            </span>
-          </div>
         </div>
 
         {/* Sector Reached */}
-        <div className="w-full bg-slate-950/60 border border-slate-800/60 rounded-xl px-4 py-2.5 mb-6 flex items-center justify-between text-xs">
-          <span className="font-mono text-slate-400">LAST SECTOR:</span>
-          <span className="font-display font-bold text-slate-200">{zoneConfig.name}</span>
+        <div className="w-full bg-slate-950/70 border border-slate-800 rounded-2xl px-3.5 py-2 mb-5 flex items-center justify-between text-xs">
+          <span className="font-mono text-slate-400">ZONE REACHED:</span>
+          <span className="font-display font-bold text-sky-300">{zoneConfig.name}</span>
         </div>
 
-        {/* Action Buttons */}
-        <div className="w-full flex flex-col gap-3">
-          {canRevive && onRevive && (
-            <button
-              onClick={() => {
-                soundEngine.playClick();
-                onRevive();
-              }}
-              className="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 font-black rounded-xl shadow-[0_0_25px_rgba(16,185,129,0.5)] active:scale-95 transition-all text-sm tracking-wide"
-            >
-              <Sparkles className="w-4 h-4 fill-slate-950" />
-              <span>REVIVE EARTH (WATCH AD &middot; +60% HP)</span>
-            </button>
-          )}
+        {/* Action Buttons: Play Again (Big), Leaderboard, Main Menu */}
+        <div className="w-full flex flex-col gap-2.5">
+          <button
+            onClick={() => {
+              soundEngine.playClick();
+              onRestart();
+            }}
+            className="w-full flex items-center justify-center gap-2 py-3.5 px-6 bg-gradient-to-r from-sky-500 via-blue-600 to-indigo-600 hover:from-sky-400 hover:to-blue-500 text-white font-black rounded-2xl shadow-[0_0_25px_rgba(56,189,248,0.5)] active:scale-95 transition-all text-sm tracking-wide"
+          >
+            <RotateCcw className="w-4 h-4" />
+            <span>{isMobile ? 'PLAY AGAIN' : 'PLAY AGAIN (SPACE)'}</span>
+          </button>
 
-          <div className="w-full flex flex-col sm:flex-row items-center gap-3">
+          <div className="w-full grid grid-cols-2 gap-2.5">
             <button
               onClick={() => {
                 soundEngine.playClick();
-                onRestart();
+                onOpenLeaderboard();
               }}
-              className="w-full sm:flex-1 flex items-center justify-center gap-2 px-6 py-3.5 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-bold rounded-xl shadow-[0_0_20px_rgba(56,189,248,0.4)] active:scale-95 transition-all text-sm"
+              className="flex items-center justify-center gap-2 py-2.5 px-4 bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white font-bold rounded-2xl border border-slate-700 transition-colors text-xs"
             >
-              <RotateCcw className="w-4 h-4" />
-              <span>{isMobile ? 'PLAY AGAIN' : 'PLAY AGAIN (SPACE)'}</span>
+              <ListOrdered className="w-4 h-4 text-amber-400" />
+              <span>LEADERBOARD</span>
             </button>
 
             <button
@@ -143,7 +141,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
                 soundEngine.playClick();
                 onHome();
               }}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-semibold rounded-xl border border-slate-700 transition-colors text-sm"
+              className="flex items-center justify-center gap-2 py-2.5 px-4 bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white font-bold rounded-2xl border border-slate-700 transition-colors text-xs"
             >
               <Home className="w-4 h-4" />
               <span>MAIN MENU</span>

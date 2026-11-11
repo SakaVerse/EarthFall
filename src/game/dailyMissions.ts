@@ -23,7 +23,7 @@ export class DailyMissionsManager {
         targetType: 'energy',
         targetCount: 45,
         currentCount: 0,
-        reward: 160,
+        reward: 80, // 50% rebalance (was 160)
         completed: false,
         claimed: false,
       },
@@ -34,7 +34,7 @@ export class DailyMissionsManager {
         targetType: 'dodge',
         targetCount: 20,
         currentCount: 0,
-        reward: 180,
+        reward: 90, // 50% rebalance (was 180)
         completed: false,
         claimed: false,
       },
@@ -45,7 +45,7 @@ export class DailyMissionsManager {
         targetType: 'distance',
         targetCount: 3500,
         currentCount: 0,
-        reward: 220,
+        reward: 110, // 50% rebalance (was 220)
         completed: false,
         claimed: false,
       },
@@ -56,7 +56,7 @@ export class DailyMissionsManager {
         targetType: 'skills',
         targetCount: 4,
         currentCount: 0,
-        reward: 150,
+        reward: 75, // 50% rebalance (was 150)
         completed: false,
         claimed: false,
       },
@@ -67,7 +67,7 @@ export class DailyMissionsManager {
         targetType: 'combo',
         targetCount: 5,
         currentCount: 0,
-        reward: 200,
+        reward: 100, // 50% rebalance (was 200)
         completed: false,
         claimed: false,
       },

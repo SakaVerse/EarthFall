@@ -11,8 +11,10 @@ import { SettingsModal } from './components/SettingsModal';
 import { TouchControls } from './components/TouchControls';
 import { DailyMissionsModal } from './components/DailyMissionsModal';
 import { SkinShopModal } from './components/SkinShopModal';
+import { UsernameModal } from './components/UsernameModal';
+import { LeaderboardModal } from './components/LeaderboardModal';
+import { LeaderboardManager } from './game/leaderboard';
 import { soundEngine } from './game/audio';
-import { crazyGames } from './game/crazyGamesSdk';
 import { CosmeticsManager } from './game/cosmetics';
 import { DailyMissionsManager } from './game/dailyMissions';
 import { detectDevice } from './utils/device';
@@ -27,7 +29,8 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showSkinShop, setShowSkinShop] = useState(false);
   const [showDailyMissions, setShowDailyMissions] = useState(false);
-  const [hasRevivedThisRun, setHasRevivedThisRun] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showUsernamePrompt, setShowUsernamePrompt] = useState<boolean>(() => !LeaderboardManager.getUsername());
 
   // Device Auto-Detection
   const [detectedIsMobile, setDetectedIsMobile] = useState<boolean>(() => detectDevice().isMobile);
@@ -49,6 +52,7 @@ export default function App() {
   const [isGrounded, setIsGrounded] = useState(false);
   const [isGroundHazardActive, setIsGroundHazardActive] = useState(false);
   const [scrapBalance, setScrapBalance] = useState<number>(() => CosmeticsManager.getScrapBalance());
+  const [coinsEarnedThisRun, setCoinsEarnedThisRun] = useState<number>(0);
   const [activePowerUps, setActivePowerUps] = useState<ActivePowerUp[]>([]);
   const [skills, setSkills] = useState<ActiveSkill[]>([]);
   const [bestScore, setBestScore] = useState(0);
@@ -105,21 +109,19 @@ export default function App() {
     const engine = new GameEngine(canvasRef.current);
     engineRef.current = engine;
 
-    // Initialize CrazyGames HTML5 SDK
-    crazyGames.init();
-
     engine.onStateChange = (newState) => {
       setGameState(newState);
       if (newState === 'PLAYING') {
-        crazyGames.gameplayStart();
+        LeaderboardManager.recordGamePlayed();
         if (!soundEngine.isMuted()) {
           soundEngine.startMusic();
         }
       } else {
-        crazyGames.gameplayStop();
+        soundEngine.stopMusic();
       }
       if (newState === 'GAME_OVER') {
         setBestScore(engine.getBestScore());
+        setCoinsEarnedThisRun(engine.scrapCollectedThisRun);
       }
     };
 
@@ -180,7 +182,7 @@ export default function App() {
       }
 
       if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
-        if (gameState === 'TITLE' && !showHowToPlay && !showSettings && !showSkinShop && !showDailyMissions) {
+        if (gameState === 'TITLE' && !showHowToPlay && !showSettings && !showSkinShop && !showDailyMissions && !showLeaderboard && !showUsernamePrompt) {
           engineRef.current.startGame();
         } else if (gameState === 'PLAYING') {
           engineRef.current.applyJump();
@@ -210,6 +212,8 @@ export default function App() {
           setShowSkinShop(false);
         } else if (showDailyMissions) {
           setShowDailyMissions(false);
+        } else if (showLeaderboard) {
+          setShowLeaderboard(false);
         } else if (gameState === 'PLAYING') {
           engineRef.current.pauseGame();
         } else if (gameState === 'PAUSED') {
@@ -220,7 +224,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [gameState, showHowToPlay, showSettings, showSkinShop, showDailyMissions]);
+  }, [gameState, showHowToPlay, showSettings, showSkinShop, showDailyMissions, showLeaderboard, showUsernamePrompt]);
 
   // Handlers
   const handleTriggerSkill = useCallback((type: SkillType) => {
@@ -230,7 +234,6 @@ export default function App() {
   }, []);
 
   const handleStartGame = useCallback(() => {
-    setHasRevivedThisRun(false);
     if (engineRef.current) {
       engineRef.current.startGame();
     }
@@ -241,7 +244,6 @@ export default function App() {
   }, []);
 
   const handleStoryComplete = useCallback(() => {
-    setHasRevivedThisRun(false);
     if (engineRef.current) {
       engineRef.current.startGame();
     }
@@ -260,23 +262,9 @@ export default function App() {
   }, []);
 
   const handleRestart = useCallback(() => {
-    setHasRevivedThisRun(false);
-    // Request midgame interstitial ad on restart between game runs
-    crazyGames.requestMidgameAd(() => {
-      if (engineRef.current) {
-        engineRef.current.startGame();
-      }
-    });
-  }, []);
-
-  const handleRevive = useCallback(() => {
-    // Request rewarded video ad to revive Earth
-    crazyGames.requestRewardedAd(() => {
-      setHasRevivedThisRun(true);
-      if (engineRef.current) {
-        engineRef.current.reviveGame();
-      }
-    });
+    if (engineRef.current) {
+      engineRef.current.startGame();
+    }
   }, []);
 
   const handleHome = useCallback(() => {
@@ -298,11 +286,13 @@ export default function App() {
       if (newMuted) {
         soundEngine.stopMusic();
       } else {
-        soundEngine.startMusic();
+        if (gameState === 'PLAYING') {
+          soundEngine.startMusic();
+        }
       }
       return updated;
     });
-  }, []);
+  }, [gameState]);
 
   const handleClearHighScores = useCallback(() => {
     if (engineRef.current) {
@@ -311,19 +301,6 @@ export default function App() {
     }
   }, []);
 
-  const handleToggleControlMode = useCallback(() => {
-    setSettings((prev) => {
-      const currentIsMobile =
-        prev.controlMode === 'mobile'
-          ? true
-          : prev.controlMode === 'pc'
-          ? false
-          : detectedIsMobile;
-      const nextMode = currentIsMobile ? 'pc' : 'mobile';
-      return { ...prev, controlMode: nextMode };
-    });
-  }, [detectedIsMobile]);
-
   const handleCanvasTap = useCallback(() => {
     if (!isMobileActive && gameState === 'PLAYING' && engineRef.current) {
       engineRef.current.applyJump();
@@ -331,39 +308,46 @@ export default function App() {
   }, [gameState, isMobileActive]);
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-black flex items-center justify-center font-display">
-      {/* 16:9 Scaled Game Canvas Viewport */}
-      <div className="relative w-full h-full max-w-[177.78vh] max-h-[56.25vw] aspect-video flex items-center justify-center overflow-hidden cosmic-vignette">
+    <div className="relative w-screen h-screen overflow-hidden bg-black flex items-center justify-center font-display select-none touch-none">
+      {/* Dynamic Viewport Container: Scaled cleanly without letterbox overflow */}
+      <div className="relative w-full h-full max-w-[177.78vh] max-h-[100vh] sm:max-h-[56.25vw] aspect-auto sm:aspect-video flex items-center justify-center overflow-hidden cosmic-vignette">
         <canvas
           ref={canvasRef}
-          className={`w-full h-full block ${isMobileActive ? 'cursor-default' : 'cursor-pointer'}`}
+          className={`w-full h-full object-contain block ${isMobileActive ? 'cursor-default' : 'cursor-pointer'}`}
           onClick={!isMobileActive ? handleCanvasTap : undefined}
         />
 
         {/* PORTRAIT ORIENTATION HELPER FOR MOBILE */}
         {isMobileActive && isPortrait && showOrientationHint && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-auto flex items-center gap-2 bg-slate-950/90 border border-sky-500/40 text-sky-200 text-[11px] font-mono px-3 py-1.5 rounded-full shadow-xl backdrop-blur-md">
+          <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-50 pointer-events-auto flex items-center gap-2 bg-slate-950/95 border border-sky-500/50 text-sky-200 text-[10px] sm:text-[11px] font-mono px-3 py-1.5 rounded-full shadow-2xl backdrop-blur-md">
             <RotateCw className="w-3.5 h-3.5 text-sky-400 animate-spin" />
             <span>Rotate to Landscape for Wider Field of View</span>
             <button
               onClick={() => setShowOrientationHint(false)}
-              className="ml-1 text-slate-400 hover:text-white font-bold"
+              className="ml-1 text-slate-400 hover:text-white font-bold cursor-pointer"
             >
               ✕
             </button>
           </div>
         )}
 
+        {/* FIRST-TIME USERNAME MODAL */}
+        {showUsernamePrompt && (
+          <UsernameModal
+            onComplete={(_name) => {
+              setShowUsernamePrompt(false);
+            }}
+          />
+        )}
+
         {/* TITLE SCREEN OVERLAY */}
-        {gameState === 'TITLE' && !showHowToPlay && !showSettings && !showSkinShop && !showDailyMissions && (
+        {gameState === 'TITLE' && !showHowToPlay && !showSettings && !showSkinShop && !showDailyMissions && !showLeaderboard && !showUsernamePrompt && (
           <TitleScreen
             onStart={handleStartGame}
-            onStory={handleStartStory}
-            onHowToPlay={() => setShowHowToPlay(true)}
-            onSettings={() => setShowSettings(true)}
             onOpenShop={() => setShowSkinShop(true)}
             onOpenMissions={() => setShowDailyMissions(true)}
-            onToggleControlMode={handleToggleControlMode}
+            onOpenLeaderboard={() => setShowLeaderboard(true)}
+            onSettings={() => setShowSettings(true)}
             bestScore={bestScore}
             muted={settings.sound.muted}
             onToggleMute={handleToggleMute}
@@ -396,7 +380,7 @@ export default function App() {
           />
         )}
 
-        {/* MOBILE ON-SCREEN TOUCH CONTROLS (Strictly rendered ONLY when mobile mode is active) */}
+        {/* MOBILE ON-SCREEN TOUCH CONTROLS */}
         {isMobileActive && gameState === 'PLAYING' && (
           <TouchControls
             onJump={() => engineRef.current?.applyJump()}
@@ -425,11 +409,11 @@ export default function App() {
           <GameOverModal
             stats={stats}
             bestScore={bestScore}
+            coinsEarned={coinsEarnedThisRun}
             onRestart={handleRestart}
             onHome={handleHome}
+            onOpenLeaderboard={() => setShowLeaderboard(true)}
             isMobile={isMobileActive}
-            onRevive={handleRevive}
-            canRevive={!hasRevivedThisRun}
           />
         )}
 
@@ -470,6 +454,11 @@ export default function App() {
               engineRef.current?.refreshCosmetics();
             }}
           />
+        )}
+
+        {/* GLOBAL LEADERBOARD MODAL */}
+        {showLeaderboard && (
+          <LeaderboardModal onClose={() => setShowLeaderboard(false)} />
         )}
       </div>
     </div>

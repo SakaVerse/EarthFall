@@ -706,6 +706,28 @@ class SoundEngine {
     osc.stop(t + 0.14);
   }
 
+  public playAtmosphereWarning() {
+    this.initContext();
+    if (!this.ctx || !this.sfxGain) return;
+    const t = this.ctx.currentTime;
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(880, t);
+    osc.frequency.setValueAtTime(440, t + 0.1);
+
+    gain.gain.setValueAtTime(0.2, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+
+    osc.connect(gain);
+    gain.connect(this.sfxGain);
+
+    osc.start(t);
+    osc.stop(t + 0.24);
+  }
+
   public playRewardClaim() {
     this.initContext();
     if (!this.ctx || !this.sfxGain) return;

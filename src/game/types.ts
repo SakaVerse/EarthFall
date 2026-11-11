@@ -119,7 +119,7 @@ export interface PlayerStats {
 
 export type ThemeId = 'default' | 'solar' | 'cyberpunk' | 'void' | 'glacial';
 
-export type SkinTier = 'common' | 'rare' | 'legendary';
+export type SkinTier = 'common' | 'rare' | 'epic' | 'legendary' | 'mythic';
 
 export type SkinId =
   | 'earth_classic'
@@ -130,7 +130,58 @@ export type SkinId =
   | 'bioluminescent_gaia'
   | 'dyson_core'
   | 'dark_matter_void'
-  | 'cyberpunk_matrix';
+  | 'cyberpunk_matrix'
+  | 'ice_earth'
+  | 'toxic_earth'
+  | 'fire_earth'
+  | 'lava_earth'
+  | 'ocean_earth'
+  | 'neon_earth'
+  | 'crystal_earth'
+  | 'shadow_earth'
+  | 'galaxy_earth'
+  | 'golden_earth'
+  | 'aurora_earth'
+  | 'void_earth'
+  | 'zombie_earth';
+
+export type SkinTrailType =
+  | 'none'
+  | 'fire'
+  | 'ember'
+  | 'bubble'
+  | 'neon'
+  | 'sparkle'
+  | 'smoke'
+  | 'stars'
+  | 'gold'
+  | 'rainbow'
+  | 'void'
+  | 'toxic'
+  | 'default';
+
+export type SkinExplosionType =
+  | 'default'
+  | 'stars'
+  | 'gold'
+  | 'implosion'
+  | 'toxic';
+
+export type SpecialRenderType =
+  | 'default'
+  | 'ice'
+  | 'slime'
+  | 'fire'
+  | 'lava'
+  | 'ocean'
+  | 'neon'
+  | 'crystal'
+  | 'shadow'
+  | 'galaxy'
+  | 'golden'
+  | 'aurora'
+  | 'void_hole'
+  | 'zombie';
 
 export interface SkinItem {
   id: SkinId;
@@ -146,27 +197,31 @@ export interface SkinItem {
   continentColor: string;
   cloudColor: string;
   auroraColor: string;
-  ringStyle?: 'none' | 'saturn' | 'cyber' | 'energy';
+  ringStyle?: 'none' | 'saturn' | 'cyber' | 'energy' | 'void_ring' | 'crown' | 'neon_halo';
+  trailType?: SkinTrailType;
+  explosionType?: SkinExplosionType;
+  specialRender?: SpecialRenderType;
 }
 
-export interface DailyMission {
-  id: string;
-  title: string;
-  description: string;
-  targetType: 'energy' | 'dodge' | 'distance' | 'skills' | 'combo';
-  targetCount: number;
-  currentCount: number;
-  reward: number;
-  completed: boolean;
-  claimed: boolean;
-}
-
-export interface HighScoreRecord {
+export interface LeaderboardEntry {
+  rank?: number;
+  username: string;
   score: number;
-  distance: number;
-  energy: number;
   zone: string;
   date: string;
+  isCurrentPlayer?: boolean;
+}
+
+export interface FloatingText {
+  id: string;
+  text: string;
+  x: number;
+  y: number;
+  alpha: number;
+  life: number;
+  maxLife: number;
+  color: string;
+  scale?: number;
 }
 
 export interface AudioSettings {
@@ -186,3 +241,24 @@ export interface GameSettings {
   touchControlsVisible: boolean;
   sound: AudioSettings;
 }
+
+export interface DailyMission {
+  id: string;
+  title: string;
+  description: string;
+  targetType: 'distance' | 'energy' | 'dodge' | 'combo' | 'skills' | 'games';
+  targetCount: number;
+  currentCount: number;
+  reward: number;
+  completed: boolean;
+  claimed: boolean;
+}
+
+export interface HighScoreRecord {
+  score: number;
+  distance: number;
+  energy: number;
+  zone: string;
+  date: string;
+}
+

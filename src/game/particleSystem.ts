@@ -1,12 +1,14 @@
 /**
- * Earthfall: Beyond the Solar System - Ultra High-Fidelity Particle FX Engine
+ * Earthfall: Beyond the Solar System - Ultra High-Performance Pooled Particle System
  * Features:
- * - Dual-cone ion exhaust with Mach diamond shock rings
- * - Atmospheric entry bow-shock plasma when diving at high speeds
- * - Glowing molten sparks and debris fragments on asteroid impacts
- * - EMP electric shockwave rings and chromatic discharge
- * - Ground friction hazard sparks and incinerating heat plumes
+ * - Object pooling for zero-garbage collection lag on mobile devices
+ * - Continuous engine exhaust trails behind Earth fading in 0.4s (with custom skin variations)
+ * - 25-30 particle collision explosion bursts + shock rings + unique skin explosion types
+ * - Collectible shimmering sparkles for stars and coins
+ * - Small ring effects on 2nd and 3rd jumps
  */
+
+import { SkinItem } from './types';
 
 export interface Particle {
   x: number;
@@ -18,14 +20,51 @@ export interface Particle {
   alpha: number;
   life: number;
   maxLife: number;
-  shape?: 'circle' | 'spark' | 'ring' | 'streak' | 'diamond';
+  shape?: 'circle' | 'spark' | 'ring' | 'streak' | 'diamond' | 'bubble';
   length?: number;
   glow?: boolean;
+  active: boolean;
 }
 
 export class ParticleSystem {
   private particles: Particle[] = [];
-  private maxParticles = 650;
+  private pool: Particle[] = [];
+  private maxActiveParticles = 450;
+
+  constructor() {
+    // Pre-populate pool with 450 reusable particles
+    for (let i = 0; i < this.maxActiveParticles; i++) {
+      this.pool.push({
+        x: 0,
+        y: 0,
+        vx: 0,
+        vy: 0,
+        size: 2,
+        color: '#ffffff',
+        alpha: 1,
+        life: 0,
+        maxLife: 0.4,
+        active: false,
+      });
+    }
+  }
+
+  private obtain(): Particle | null {
+    if (this.pool.length > 0) {
+      const p = this.pool.pop()!;
+      p.active = true;
+      this.particles.push(p);
+      return p;
+    }
+    return null;
+  }
+
+  private recycle(index: number) {
+    const p = this.particles[index];
+    p.active = false;
+    this.particles.splice(index, 1);
+    this.pool.push(p);
+  }
 
   public update(dt: number) {
     for (let i = this.particles.length - 1; i >= 0; i--) {
@@ -35,10 +74,10 @@ export class ParticleSystem {
       p.life += dt;
 
       // Smooth decay curve
-      p.alpha = Math.max(0, 1 - Math.pow(p.life / p.maxLife, 1.4));
+      p.alpha = Math.max(0, 1 - Math.pow(p.life / p.maxLife, 1.2));
 
       if (p.life >= p.maxLife) {
-        this.particles.splice(i, 1);
+        this.recycle(i);
       }
     }
   }
@@ -61,25 +100,30 @@ export class ParticleSystem {
       } else if (p.shape === 'spark' || p.shape === 'diamond') {
         ctx.save();
         ctx.translate(p.x, p.y);
-        ctx.rotate(p.life * 6);
+        ctx.rotate(p.life * 7);
         ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
         ctx.restore();
       } else if (p.shape === 'ring') {
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2.5;
         ctx.beginPath();
-        const r = p.size * (1 + (p.life / p.maxLife) * 2.8);
+        const r = p.size * (1 + (p.life / p.maxLife) * 2.5);
         ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
         ctx.stroke();
+      } else if (p.shape === 'bubble') {
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.stroke();
       } else {
-        // Glowing circle with soft corona
+        // Glowing circle
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
         ctx.fill();
 
         if (p.glow) {
-          ctx.globalAlpha = p.alpha * 0.35;
+          ctx.globalAlpha = p.alpha * 0.4;
           ctx.beginPath();
-          ctx.arc(p.x, p.y, p.size * 2.4, 0, Math.PI * 2);
+          ctx.arc(p.x, p.y, p.size * 2.2, 0, Math.PI * 2);
           ctx.fill();
         }
       }
@@ -88,258 +132,376 @@ export class ParticleSystem {
     ctx.restore();
   }
 
-  public emitThrusterWake(x: number, y: number, isBoosting: boolean, customColor?: string) {
-    if (this.particles.length >= this.maxParticles) return;
+  /**
+   * Continuous small blue/white exhaust particles behind Earth while moving, fading in 0.4s.
+   * Also respects skin trail type (fire, ember, bubble, neon, sparkle, smoke, stars, gold, rainbow, void, toxic).
+   */
+  public emitContinuousExhaust(
+    earthX: number,
+    earthY: number,
+    isBoosting: boolean,
+    skin?: SkinItem
+  ) {
+    const trailType = skin?.trailType || 'default';
+    if (trailType === 'none') return;
 
-    const count = isBoosting ? 6 : 3;
+    const count = isBoosting ? 4 : 2;
+
     for (let i = 0; i < count; i++) {
-      const angle = Math.PI + (Math.random() - 0.5) * 0.35;
-      const speed = isBoosting ? 280 + Math.random() * 260 : 140 + Math.random() * 120;
+      const p = this.obtain();
+      if (!p) break;
 
-      // Mach Diamond Shock Core
-      this.particles.push({
-        x: x - 26 + Math.random() * 6,
-        y: y + (Math.random() - 0.5) * 16,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        size: isBoosting ? 4 + Math.random() * 3.5 : 2.5 + Math.random() * 2.5,
-        color: customColor
-          ? customColor
-          : isBoosting
-          ? Math.random() > 0.5
-            ? '#fbbf24'
-            : '#f59e0b'
-          : Math.random() > 0.4
-          ? '#38bdf8'
-          : '#e0f2fe',
-        alpha: 0.95,
-        life: 0,
-        maxLife: isBoosting ? 0.38 : 0.28,
-        shape: Math.random() > 0.6 ? 'diamond' : 'circle',
-        glow: true,
-      });
+      const angle = Math.PI + (Math.random() - 0.5) * 0.45;
+      const speed = isBoosting ? 260 + Math.random() * 200 : 130 + Math.random() * 90;
 
-      // Outer hot ion plume
-      if (Math.random() > 0.5) {
-        this.particles.push({
-          x: x - 30,
-          y: y + (Math.random() - 0.5) * 22,
-          vx: Math.cos(angle) * (speed * 0.7),
-          vy: Math.sin(angle) * (speed * 0.7),
-          size: 1.5 + Math.random() * 2,
-          color: customColor ? customColor : '#bae6fd',
-          alpha: 0.6,
-          life: 0,
-          maxLife: 0.22,
-          shape: 'circle',
-        });
+      p.x = earthX - 32 + (Math.random() - 0.5) * 6;
+      p.y = earthY + (Math.random() - 0.5) * 14;
+      p.vx = Math.cos(angle) * speed;
+      p.vy = Math.sin(angle) * speed;
+      p.size = 2.2 + Math.random() * 2.2;
+      p.alpha = 0.95;
+      p.life = 0;
+      p.maxLife = 0.4; // Fades in 0.4s as requested!
+      p.glow = true;
+
+      // Color and shape customization per skin trail
+      if (trailType === 'fire') {
+        p.color = Math.random() > 0.5 ? '#f97316' : '#ef4444';
+        p.shape = 'spark';
+      } else if (trailType === 'ember') {
+        p.color = Math.random() > 0.4 ? '#dc2626' : '#facc15';
+        p.shape = 'spark';
+      } else if (trailType === 'bubble') {
+        p.color = '#38bdf8';
+        p.shape = 'bubble';
+        p.vy -= 25; // Floats slightly up
+      } else if (trailType === 'neon') {
+        p.color = Math.random() > 0.5 ? '#ec4899' : '#a855f7';
+        p.shape = 'spark';
+        p.size = 3;
+      } else if (trailType === 'sparkle') {
+        p.color = Math.random() > 0.4 ? '#ffffff' : '#bae6fd';
+        p.shape = 'diamond';
+      } else if (trailType === 'smoke') {
+        p.color = Math.random() > 0.5 ? 'rgba(88, 28, 135, 0.7)' : 'rgba(24, 24, 27, 0.8)';
+        p.shape = 'circle';
+        p.size = 4;
+      } else if (trailType === 'stars') {
+        p.color = Math.random() > 0.5 ? '#c084fc' : '#fdf4ff';
+        p.shape = 'diamond';
+        p.size = 3;
+      } else if (trailType === 'gold') {
+        p.color = Math.random() > 0.5 ? '#fbbf24' : '#f59e0b';
+        p.shape = 'diamond';
+      } else if (trailType === 'rainbow') {
+        const rainbowColors = ['#10b981', '#06b6d4', '#ec4899', '#f59e0b'];
+        p.color = rainbowColors[Math.floor(Math.random() * rainbowColors.length)];
+        p.shape = 'circle';
+      } else if (trailType === 'void') {
+        p.color = Math.random() > 0.5 ? '#9333ea' : '#3b0764';
+        p.shape = 'diamond';
+        p.vx = -p.vx * 0.4; // Void pulls particles inward
+      } else if (trailType === 'toxic') {
+        p.color = Math.random() > 0.5 ? '#84cc16' : '#dc2626';
+        p.shape = 'circle';
+      } else {
+        // Default standard small blue/white particles
+        p.color = Math.random() > 0.4 ? '#38bdf8' : '#ffffff';
+        p.shape = 'circle';
       }
     }
   }
 
+  /**
+   * Collision explosion burst: 25-30 orange/red/white particles outward
+   * Plus shock ring and skin explosion variations!
+   */
+  public emitExplosionBurst(
+    x: number,
+    y: number,
+    skin?: SkinItem,
+    customColor?: string
+  ) {
+    const explosionType = skin?.explosionType || 'default';
+    const count = 28; // 25-30 particles
+
+    let baseColor = customColor || '#f97316';
+    let altColor = '#ef4444';
+
+    if (explosionType === 'stars') {
+      baseColor = '#c084fc';
+      altColor = '#f3e8ff';
+    } else if (explosionType === 'gold') {
+      baseColor = '#fbbf24';
+      altColor = '#fef08a';
+    } else if (explosionType === 'toxic') {
+      baseColor = '#84cc16';
+      altColor = '#dc2626';
+    } else if (explosionType === 'implosion') {
+      baseColor = '#9333ea';
+      altColor = '#3b0764';
+    }
+
+    for (let i = 0; i < count; i++) {
+      const p = this.obtain();
+      if (!p) break;
+
+      const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.35;
+      const speed = explosionType === 'implosion'
+        ? -(120 + Math.random() * 220) // Inward pull
+        : 90 + Math.random() * 280;
+
+      p.x = x;
+      p.y = y;
+      p.vx = Math.cos(angle) * speed;
+      p.vy = Math.sin(angle) * speed;
+      p.size = 2.5 + Math.random() * 3.5;
+      p.color = Math.random() > 0.6 ? '#ffffff' : Math.random() > 0.3 ? baseColor : altColor;
+      p.alpha = 1;
+      p.life = 0;
+      p.maxLife = 0.35 + Math.random() * 0.25;
+      p.shape = Math.random() > 0.4 ? 'spark' : 'circle';
+      p.glow = true;
+    }
+
+    // Shockwave ring
+    const ring = this.obtain();
+    if (ring) {
+      ring.x = x;
+      ring.y = y;
+      ring.vx = 0;
+      ring.vy = 0;
+      ring.size = 18;
+      ring.color = baseColor;
+      ring.alpha = 1;
+      ring.life = 0;
+      ring.maxLife = 0.3;
+      ring.shape = 'ring';
+    }
+  }
+
+  public emitExplosion(x: number, y: number, color = '#f97316', count = 25) {
+    for (let i = 0; i < count; i++) {
+      const p = this.obtain();
+      if (!p) break;
+      const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+      const speed = 70 + Math.random() * 220;
+      p.x = x;
+      p.y = y;
+      p.vx = Math.cos(angle) * speed;
+      p.vy = Math.sin(angle) * speed;
+      p.size = 2.5 + Math.random() * 3;
+      p.color = Math.random() > 0.5 ? '#ffffff' : color;
+      p.alpha = 1;
+      p.life = 0;
+      p.maxLife = 0.35 + Math.random() * 0.25;
+      p.shape = 'spark';
+      p.glow = true;
+    }
+  }
+
+  /**
+   * Shimmering effect for collectibles: stars/coins have constant sparkle particles
+   */
+  public emitCollectibleShimmer(x: number, y: number, color = '#38bdf8') {
+    if (Math.random() > 0.55) return; // Gentle rate
+    const p = this.obtain();
+    if (!p) return;
+
+    p.x = x + (Math.random() - 0.5) * 22;
+    p.y = y + (Math.random() - 0.5) * 22;
+    p.vx = (Math.random() - 0.5) * 25;
+    p.vy = (Math.random() - 0.5) * 25 - 15;
+    p.size = 1.8 + Math.random() * 2.2;
+    p.color = Math.random() > 0.4 ? color : '#ffffff';
+    p.alpha = 0.9;
+    p.life = 0;
+    p.maxLife = 0.35;
+    p.shape = 'diamond';
+    p.glow = true;
+  }
+
+  /**
+   * Small shockwave ring effect on 2nd and 3rd jumps
+   */
+  public emitJumpRing(x: number, y: number, ringColor = '#38bdf8') {
+    const p = this.obtain();
+    if (p) {
+      p.x = x;
+      p.y = y + 16;
+      p.vx = -60;
+      p.vy = 0;
+      p.size = 14;
+      p.color = ringColor;
+      p.alpha = 1;
+      p.life = 0;
+      p.maxLife = 0.32;
+      p.shape = 'ring';
+    }
+  }
+
+  public emitCollectSparkle(x: number, y: number, color = '#38bdf8', count = 18) {
+    for (let i = 0; i < count; i++) {
+      const p = this.obtain();
+      if (!p) break;
+
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 60 + Math.random() * 200;
+
+      p.x = x;
+      p.y = y;
+      p.vx = Math.cos(angle) * speed;
+      p.vy = Math.sin(angle) * speed;
+      p.size = 2 + Math.random() * 3;
+      p.color = Math.random() > 0.3 ? color : '#ffffff';
+      p.alpha = 1;
+      p.life = 0;
+      p.maxLife = 0.35 + Math.random() * 0.2;
+      p.shape = 'spark';
+      p.glow = true;
+    }
+  }
+
   public emitGroundSparks(x: number, y: number) {
-    if (this.particles.length >= this.maxParticles) return;
-
-    for (let i = 0; i < 4; i++) {
-      const angle = -Math.PI * 0.5 + (Math.random() - 0.5) * 1.2;
-      const speed = 120 + Math.random() * 220;
-
-      this.particles.push({
-        x: x + (Math.random() - 0.5) * 20,
-        y: y + 26,
-        vx: Math.cos(angle) * speed - 150,
-        vy: Math.sin(angle) * speed,
-        size: 2 + Math.random() * 3,
-        color: Math.random() > 0.5 ? '#f97316' : '#fde047',
-        alpha: 1,
-        life: 0,
-        maxLife: 0.35,
-        shape: 'spark',
-        glow: true,
-      });
-    }
-  }
-
-  public emitExplosion(x: number, y: number, color = '#f97316', count = 35) {
-    for (let i = 0; i < count; i++) {
-      if (this.particles.length >= this.maxParticles) break;
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 80 + Math.random() * 320;
-
-      this.particles.push({
-        x,
-        y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        size: 2.5 + Math.random() * 4.5,
-        color: Math.random() > 0.4 ? color : Math.random() > 0.5 ? '#fef08a' : '#ffffff',
-        alpha: 1,
-        life: 0,
-        maxLife: 0.45 + Math.random() * 0.4,
-        shape: Math.random() > 0.4 ? 'spark' : 'circle',
-        glow: true,
-      });
-    }
-
-    // Expanding high-intensity shockwave ring
-    this.particles.push({
-      x,
-      y,
-      vx: 0,
-      vy: 0,
-      size: 18,
-      color,
-      alpha: 1,
-      life: 0,
-      maxLife: 0.35,
-      shape: 'ring',
-    });
-  }
-
-  public emitCollectSparkle(x: number, y: number, color = '#38bdf8', count = 20) {
-    for (let i = 0; i < count; i++) {
-      if (this.particles.length >= this.maxParticles) break;
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 50 + Math.random() * 190;
-
-      this.particles.push({
-        x,
-        y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        size: 2 + Math.random() * 3,
-        color: Math.random() > 0.3 ? color : '#ffffff',
-        alpha: 1,
-        life: 0,
-        maxLife: 0.4 + Math.random() * 0.25,
-        shape: 'spark',
-        glow: true,
-      });
-    }
-  }
-
-  public emitCometTrail(x: number, y: number, tailAngle: number, speed: number) {
-    if (this.particles.length >= this.maxParticles) return;
     for (let i = 0; i < 3; i++) {
-      const angle = tailAngle + (Math.random() - 0.5) * 0.35;
-      const spd = speed * (0.35 + Math.random() * 0.45);
+      const p = this.obtain();
+      if (!p) break;
 
-      this.particles.push({
-        x: x + (Math.random() - 0.5) * 10,
-        y: y + (Math.random() - 0.5) * 10,
-        vx: Math.cos(angle) * spd,
-        vy: Math.sin(angle) * spd,
-        size: 2.2 + Math.random() * 2.8,
-        color: Math.random() > 0.5 ? '#22d3ee' : '#a5f3fc',
-        alpha: 0.8,
-        life: 0,
-        maxLife: 0.32,
-        shape: 'circle',
-        glow: true,
-      });
-    }
-  }
+      const angle = -Math.PI * 0.5 + (Math.random() - 0.5) * 1.2;
+      const speed = 120 + Math.random() * 180;
 
-  public emitWarpSpeedLines(width: number, height: number) {
-    if (this.particles.length >= this.maxParticles) return;
-    for (let i = 0; i < 4; i++) {
-      this.particles.push({
-        x: width + 30,
-        y: Math.random() * height,
-        vx: -(1000 + Math.random() * 600),
-        vy: 0,
-        size: 2 + Math.random() * 2.5,
-        length: 70 + Math.random() * 120,
-        color: Math.random() > 0.4 ? '#fde047' : '#38bdf8',
-        alpha: 0.75,
-        life: 0,
-        maxLife: 0.65,
-        shape: 'streak',
-      });
+      p.x = x + (Math.random() - 0.5) * 20;
+      p.y = y + 26;
+      p.vx = Math.cos(angle) * speed - 150;
+      p.vy = Math.sin(angle) * speed;
+      p.size = 2 + Math.random() * 2.5;
+      p.color = Math.random() > 0.5 ? '#f97316' : '#fde047';
+      p.alpha = 1;
+      p.life = 0;
+      p.maxLife = 0.3;
+      p.shape = 'spark';
+      p.glow = true;
     }
   }
 
   public emitEmpBlast(x: number, y: number) {
-    // Concentric expanding shockwave rings
-    for (let ring = 0; ring < 4; ring++) {
-      this.particles.push({
-        x,
-        y,
-        vx: 0,
-        vy: 0,
-        size: 32 + ring * 28,
-        color: ring % 2 === 0 ? '#38bdf8' : '#818cf8',
-        alpha: 1,
-        life: 0,
-        maxLife: 0.55 + ring * 0.15,
-        shape: 'ring',
-      });
+    for (let ring = 0; ring < 3; ring++) {
+      const p = this.obtain();
+      if (!p) break;
+      p.x = x;
+      p.y = y;
+      p.vx = 0;
+      p.vy = 0;
+      p.size = 28 + ring * 24;
+      p.color = ring % 2 === 0 ? '#38bdf8' : '#818cf8';
+      p.alpha = 1;
+      p.life = 0;
+      p.maxLife = 0.45 + ring * 0.12;
+      p.shape = 'ring';
     }
 
-    // High velocity EMP sparks radiating 360 deg
-    for (let i = 0; i < 55; i++) {
-      if (this.particles.length >= this.maxParticles) break;
-      const angle = (i * Math.PI * 2) / 55;
-      const speed = 260 + Math.random() * 360;
-      this.particles.push({
-        x,
-        y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        size: 3 + Math.random() * 3.5,
-        color: Math.random() > 0.4 ? '#38bdf8' : '#e0f2fe',
-        alpha: 1,
-        life: 0,
-        maxLife: 0.48,
-        shape: 'spark',
-        glow: true,
-      });
+    for (let i = 0; i < 35; i++) {
+      const p = this.obtain();
+      if (!p) break;
+      const angle = (i * Math.PI * 2) / 35;
+      const speed = 240 + Math.random() * 300;
+      p.x = x;
+      p.y = y;
+      p.vx = Math.cos(angle) * speed;
+      p.vy = Math.sin(angle) * speed;
+      p.size = 2.5 + Math.random() * 3;
+      p.color = Math.random() > 0.4 ? '#38bdf8' : '#ffffff';
+      p.alpha = 1;
+      p.life = 0;
+      p.maxLife = 0.42;
+      p.shape = 'spark';
+      p.glow = true;
     }
   }
 
   public emitPhaseDust(x: number, y: number) {
-    for (let i = 0; i < 22; i++) {
-      if (this.particles.length >= this.maxParticles) break;
+    for (let i = 0; i < 18; i++) {
+      const p = this.obtain();
+      if (!p) break;
       const angle = Math.random() * Math.PI * 2;
-      const speed = 60 + Math.random() * 160;
-      this.particles.push({
-        x: x + (Math.random() - 0.5) * 32,
-        y: y + (Math.random() - 0.5) * 32,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        size: 2.5 + Math.random() * 3.5,
-        color: Math.random() > 0.5 ? '#c084fc' : '#e879f9',
-        alpha: 0.95,
-        life: 0,
-        maxLife: 0.4,
-        shape: 'diamond',
-        glow: true,
-      });
+      const speed = 50 + Math.random() * 140;
+      p.x = x + (Math.random() - 0.5) * 28;
+      p.y = y + (Math.random() - 0.5) * 28;
+      p.vx = Math.cos(angle) * speed;
+      p.vy = Math.sin(angle) * speed;
+      p.size = 2.5 + Math.random() * 3;
+      p.color = Math.random() > 0.5 ? '#c084fc' : '#e879f9';
+      p.alpha = 0.95;
+      p.life = 0;
+      p.maxLife = 0.35;
+      p.shape = 'diamond';
+      p.glow = true;
     }
   }
 
   public emitRetroVentFlame(x: number, y: number) {
-    for (let i = 0; i < 35; i++) {
-      if (this.particles.length >= this.maxParticles) break;
+    for (let i = 0; i < 28; i++) {
+      const p = this.obtain();
+      if (!p) break;
       const angle = Math.PI + (Math.random() - 0.5) * 0.75;
-      const speed = 380 + Math.random() * 420;
-      this.particles.push({
-        x: x - 26,
-        y: y + (Math.random() - 0.5) * 22,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        size: 3.5 + Math.random() * 4.5,
-        color: Math.random() > 0.6 ? '#f97316' : Math.random() > 0.3 ? '#fef08a' : '#ef4444',
-        alpha: 1,
-        life: 0,
-        maxLife: 0.32,
-        shape: 'spark',
-        glow: true,
-      });
+      const speed = 360 + Math.random() * 380;
+      p.x = x - 26;
+      p.y = y + (Math.random() - 0.5) * 20;
+      p.vx = Math.cos(angle) * speed;
+      p.vy = Math.sin(angle) * speed;
+      p.size = 3 + Math.random() * 4;
+      p.color = Math.random() > 0.6 ? '#f97316' : Math.random() > 0.3 ? '#fef08a' : '#ef4444';
+      p.alpha = 1;
+      p.life = 0;
+      p.maxLife = 0.28;
+      p.shape = 'spark';
+      p.glow = true;
+    }
+  }
+
+  public emitCometTrail(x: number, y: number, tailAngle: number, speed: number) {
+    for (let i = 0; i < 2; i++) {
+      const p = this.obtain();
+      if (!p) break;
+      const angle = tailAngle + (Math.random() - 0.5) * 0.35;
+      const spd = speed * (0.35 + Math.random() * 0.45);
+      p.x = x + (Math.random() - 0.5) * 8;
+      p.y = y + (Math.random() - 0.5) * 8;
+      p.vx = Math.cos(angle) * spd;
+      p.vy = Math.sin(angle) * spd;
+      p.size = 2 + Math.random() * 2.5;
+      p.color = Math.random() > 0.5 ? '#22d3ee' : '#a5f3fc';
+      p.alpha = 0.8;
+      p.life = 0;
+      p.maxLife = 0.28;
+      p.shape = 'circle';
+      p.glow = true;
+    }
+  }
+
+  public emitWarpSpeedLines(width: number, height: number) {
+    for (let i = 0; i < 3; i++) {
+      const p = this.obtain();
+      if (!p) break;
+      p.x = width + 25;
+      p.y = Math.random() * height;
+      p.vx = -(950 + Math.random() * 550);
+      p.vy = 0;
+      p.size = 2 + Math.random() * 2;
+      p.length = 60 + Math.random() * 100;
+      p.color = Math.random() > 0.4 ? '#fde047' : '#38bdf8';
+      p.alpha = 0.7;
+      p.life = 0;
+      p.maxLife = 0.55;
+      p.shape = 'streak';
     }
   }
 
   public clear() {
-    this.particles = [];
+    while (this.particles.length > 0) {
+      const p = this.particles.pop()!;
+      p.active = false;
+      this.pool.push(p);
+    }
   }
 }

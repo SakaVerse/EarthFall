@@ -22,6 +22,7 @@ import {
   ActivePowerUp,
   ActiveSkill,
   CosmicEnergyOrb,
+  FloatingText,
   GameState,
   HighScoreRecord,
   Obstacle,
@@ -41,6 +42,7 @@ import { SpaceRenderer } from './spaceRenderer';
 import { renderCosmicOrb, renderObstacle, renderPowerUp } from './obstacleRenderer';
 import { CosmeticsManager } from './cosmetics';
 import { DailyMissionsManager } from './dailyMissions';
+import { LeaderboardManager } from './leaderboard';
 
 const HIGH_SCORE_KEY = 'earthfall_high_scores';
 
@@ -65,10 +67,20 @@ export class GameEngine {
   // Active Skills Map
   public skills: Map<SkillType, ActiveSkill> = new Map();
 
-  // Stamina system (prevents infinite air floating / roof camping)
+  // Stamina & Jump system: triple jump and slower drain
   public earthStamina = 100;
   public maxStamina = 100;
-  public readonly JUMP_STAMINA_COST = 22;
+  public readonly JUMP_STAMINA_COST = 10; // Drain slower (was 22)
+  public jumpCount = 0;
+  public readonly MAX_JUMPS = 3; // Triple jump
+
+  // Floating text feedback (+50, +Atmosphere, +1 Scrap)
+  public floatingTexts: FloatingText[] = [];
+
+  // Zone Transition 1s white fade flash & alert banner
+  public zoneFlashTimer = 0;
+  private atmosphereWarningCooldown = 0;
+  public scrapCollectedThisRun = 0;
 
   // Ground anti-cheat (prevents floor sliding cheat)
   public groundContactTimer = 0;
@@ -160,6 +172,11 @@ export class GameEngine {
     this.earthVy = 0;
     this.earthHealth = MAX_HEALTH;
     this.earthStamina = this.maxStamina;
+    this.jumpCount = 0;
+    this.floatingTexts = [];
+    this.zoneFlashTimer = 0;
+    this.atmosphereWarningCooldown = 0;
+    this.scrapCollectedThisRun = 0;
     this.groundContactTimer = 0;
     this.isGrounded = false;
     this.isGroundHazardActive = false;
@@ -318,6 +335,7 @@ export class GameEngine {
 
   public startGame() {
     this.resetGame();
+    this.incrementGamesPlayed();
     this.state = 'PLAYING';
     soundEngine.startMusic(128);
     if (this.onStateChange) this.onStateChange(this.state);
@@ -345,7 +363,37 @@ export class GameEngine {
     soundEngine.stopMusic();
     soundEngine.playGameOver();
     this.saveHighScore();
+    LeaderboardManager.submitScore(this.stats.score, ZONES[this.stats.zone].name);
     if (this.onStateChange) this.onStateChange(this.state);
+  }
+
+  public addFloatingText(text: string, x: number, y: number, color = '#38bdf8', scale = 1.0) {
+    this.floatingTexts.push({
+      id: `ft_${Date.now()}_${Math.random()}`,
+      text,
+      x,
+      y,
+      alpha: 1,
+      life: 0,
+      maxLife: 0.7, // Rises and fades in 0.7s
+      color,
+      scale,
+    });
+  }
+
+  public getGamesPlayedCount(): number {
+    try {
+      return parseInt(localStorage.getItem('earthfall_games_played') || '0', 10);
+    } catch {
+      return 0;
+    }
+  }
+
+  public incrementGamesPlayed(): void {
+    try {
+      const cur = this.getGamesPlayedCount();
+      localStorage.setItem('earthfall_games_played', (cur + 1).toString());
+    } catch {}
   }
 
   public reviveGame() {
@@ -378,26 +426,32 @@ export class GameEngine {
       return;
     }
 
-    // Jumping Stamina check: Cannot jump if stamina is depleted!
-    if (this.earthStamina < this.JUMP_STAMINA_COST * 0.7) {
-      soundEngine.playStaminaExhausted();
+    // Give Earth MORE jumps: increase to 3 jumps (triple jump)
+    if (this.jumpCount >= this.MAX_JUMPS) {
       return;
     }
 
-    // Deduct stamina per jump
+    this.jumpCount++;
+
+    // Stamina drains slower (10 instead of 22) and NEVER blocks normal movement
     this.earthStamina = Math.max(0, this.earthStamina - this.JUMP_STAMINA_COST);
 
     this.earthVy = JUMP_IMPULSE;
-    const trailColor = this.equippedSkin?.trailColor;
-    this.particles.emitThrusterWake(this.earthX, this.earthY, this.hasPowerUp('COSMIC_BOOST'), trailColor);
+    const trailColor = this.equippedSkin?.trailColor || '#38bdf8';
+
+    // Add small ring effect on 2nd and 3rd jump!
+    if (this.jumpCount >= 2) {
+      this.particles.emitJumpRing(this.earthX, this.earthY, trailColor);
+    }
+
+    this.particles.emitContinuousExhaust(this.earthX, this.earthY, this.hasPowerUp('COSMIC_BOOST'), this.equippedSkin);
     soundEngine.playJump();
   }
 
   public applyDive() {
     if (this.state !== 'PLAYING') return;
     this.earthVy = DIVE_IMPULSE;
-    const trailColor = this.equippedSkin?.trailColor;
-    this.particles.emitThrusterWake(this.earthX, this.earthY, this.hasPowerUp('COSMIC_BOOST'), trailColor);
+    this.particles.emitContinuousExhaust(this.earthX, this.earthY, this.hasPowerUp('COSMIC_BOOST'), this.equippedSkin);
     soundEngine.playDive();
   }
 
@@ -483,11 +537,36 @@ export class GameEngine {
     const speedMult = hasSlow ? 0.5 : hasBoost ? 1.6 : 1.0;
     this.gameSpeed = Math.min(MAX_GAME_SPEED, (BASE_GAME_SPEED + this.stats.distance * 0.015) * speedMult);
 
-    // Earth continuous thruster wake
-    this.particles.emitThrusterWake(this.earthX, this.earthY, hasBoost);
+    // Earth continuous thruster exhaust (continuous small blue/white particles, fade in 0.4s + custom skin trails)
+    this.particles.emitContinuousExhaust(this.earthX, this.earthY, hasBoost, this.equippedSkin);
 
     if (hasBoost) {
       this.particles.emitWarpSpeedLines(CANVAS_VIRTUAL_WIDTH, CANVAS_VIRTUAL_HEIGHT);
+    }
+
+    // Atmosphere Low Audio Warning Check (< 25%)
+    if (this.earthHealth < 25) {
+      this.atmosphereWarningCooldown -= dt;
+      if (this.atmosphereWarningCooldown <= 0) {
+        soundEngine.playAtmosphereWarning();
+        this.atmosphereWarningCooldown = 1.4;
+      }
+    }
+
+    // Update Floating Text Feedback (rise and fade in 0.7s)
+    for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
+      const ft = this.floatingTexts[i];
+      ft.y -= 48 * dt;
+      ft.life += dt;
+      ft.alpha = Math.max(0, 1 - Math.pow(ft.life / ft.maxLife, 1.2));
+      if (ft.life >= ft.maxLife) {
+        this.floatingTexts.splice(i, 1);
+      }
+    }
+
+    // Update Zone Flash timer
+    if (this.zoneFlashTimer > 0) {
+      this.zoneFlashTimer = Math.max(0, this.zoneFlashTimer - dt);
     }
 
     // Update Player Physics
@@ -546,7 +625,7 @@ export class GameEngine {
     if (this.earthY <= minY) {
       this.earthY = minY;
       this.earthVy = 160; // Downward gravity impulse
-      this.particles.emitExplosion(this.earthX, minY, '#38bdf8', 4);
+      this.particles.emitExplosionBurst(this.earthX, minY, this.equippedSkin, '#38bdf8');
     }
 
     // GROUND CONTACT & ANTI-CHEATING FLOOR HAZARD:
@@ -556,10 +635,11 @@ export class GameEngine {
     if (isTouchingFloor) {
       this.earthY = maxY;
       this.earthVy = 0;
+      this.jumpCount = 0; // Reset triple jump count on ground touch!
 
       // STAMINA REFILL:
-      // Auto-refills continuously when Earth touches the ground until completely full
-      this.earthStamina = Math.min(this.maxStamina, this.earthStamina + dt * 80);
+      // Auto-refills fast when Earth touches the ground
+      this.earthStamina = Math.min(this.maxStamina, this.earthStamina + dt * 85);
 
       // GROUND HUGGING ANTI-CHEAT:
       // If player rides the floor without jumping for > 1.1s, friction burn damages Earth
@@ -586,7 +666,8 @@ export class GameEngine {
       // In mid-air, reset ground contact timer and hazard
       this.groundContactTimer = 0;
       this.isGroundHazardActive = false;
-      // In mid-air, stamina does NOT refill (per prompt requirements)
+      // In mid-air, stamina regens smoothly when not jumping/dashing
+      this.earthStamina = Math.min(this.maxStamina, this.earthStamina + dt * 20);
     }
 
     // Invincibility timer
@@ -617,6 +698,7 @@ export class GameEngine {
       const zoneConf = ZONES[newZone];
       this.zoneBanner = zoneConf.name;
       this.zoneBannerTimer = 3.5;
+      this.zoneFlashTimer = 1.0; // 1-sec white fade flash on zone transition!
       soundEngine.playZoneWarp();
 
       const zoneIndices: Record<ZoneId, number> = {
@@ -1083,6 +1165,11 @@ export class GameEngine {
       const orb = this.orbs[i];
       orb.x -= this.gameSpeed * dt;
 
+      // Constant subtle shimmer/sparkle particles for collectible orbs
+      if (Math.random() < 0.35) {
+        this.particles.emitCollectibleShimmer(orb.x, orb.y);
+      }
+
       // Magnet attraction
       if (isMagnetized) {
         const dx = this.earthX - orb.x;
@@ -1101,11 +1188,20 @@ export class GameEngine {
         // Collected!
         this.stats.energyCollected++;
         const mult = this.hasPowerUp('COSMIC_BOOST') ? 3 : 1;
-        this.stats.score += orb.value * mult;
+        const pointsEarned = orb.value * mult;
+        this.stats.score += pointsEarned;
         DailyMissionsManager.recordProgress('energy', 1);
-        CosmeticsManager.addScrap(2);
+
+        // 40% reduced coin drops in gameplay (60% chance to award scrap)
+        const scrapGain = Math.random() < 0.6 ? 1 : 0;
+        if (scrapGain > 0) {
+          CosmeticsManager.addScrap(scrapGain);
+          this.scrapCollectedThisRun += scrapGain;
+        }
+
         soundEngine.playEnergyCollect();
-        this.particles.emitCollectSparkle(orb.x, orb.y, '#38bdf8', 14);
+        this.particles.emitCollectSparkle(orb.x, orb.y, '#38bdf8', 16);
+        this.addFloatingText(`+${pointsEarned}`, orb.x, orb.y - 12, '#38bdf8', 0.7);
         this.orbs.splice(i, 1);
         continue;
       }
@@ -1141,6 +1237,7 @@ export class GameEngine {
   private activatePowerUp(type: PowerUpType, duration: number) {
     if (type === 'ENERGY') {
       this.earthHealth = Math.min(MAX_HEALTH, this.earthHealth + 30);
+      this.addFloatingText('+ ATMOSPHERE', this.earthX, this.earthY - 30, '#4ade80', 1.0);
       soundEngine.playHeal();
       return;
     }
@@ -1172,14 +1269,14 @@ export class GameEngine {
       let collided = false;
 
       if (obs.type === 'ENERGY_BARRIER') {
-        // Capsule / box collision
-        const withinX = Math.abs(this.earthX - obs.x) < EARTH_RADIUS + 10;
-        const withinY = Math.abs(this.earthY - obs.y) < obs.height / 2 + EARTH_RADIUS * 0.7;
+        // Fair hitbox: Reduced Earth hitbox by 15% and obstacle width/height by 10%
+        const withinX = Math.abs(this.earthX - obs.x) < EARTH_RADIUS * 0.72 + 8;
+        const withinY = Math.abs(this.earthY - obs.y) < (obs.height / 2) * 0.76 + EARTH_RADIUS * 0.6;
         collided = withinX && withinY;
       } else {
-        // Circle collision
+        // Fair hitbox: 15% smaller Earth hitbox (0.72), 10% smaller asteroid hitbox (0.76)
         const dist = Math.hypot(this.earthX - obs.x, this.earthY - obs.y);
-        collided = dist < (EARTH_RADIUS * 0.85) + (obs.radius * 0.85);
+        collided = dist < (EARTH_RADIUS * 0.72) + (obs.radius * 0.76);
       }
 
       if (collided) {
@@ -1210,15 +1307,15 @@ export class GameEngine {
       return;
     }
 
-    // 3. Normal Collision Damage
+    // 3. Normal Collision Damage: 25-30 orange/red/white particles burst outward + 0.25s screen shake + brief flash
     const damage = obs.type === 'GIANT_ASTEROID' ? 40 : obs.type === 'ANTIMATTER_VORTEX' || obs.type === 'COSMIC_LEVIATHAN' ? 35 : 25;
     this.earthHealth = Math.max(0, this.earthHealth - damage);
     this.stats.currentCombo = 0; // Reset combo
 
-    this.triggerScreenShake(0.7);
+    this.triggerScreenShake(0.65);
     this.hitstopTimer = 0.04; // 40ms hitstop
     this.invincibilityTimer = 1.4; // 1.4s invincibility frames
-    this.particles.emitExplosion(this.earthX, this.earthY, '#ef4444', 35);
+    this.particles.emitExplosionBurst(this.earthX, this.earthY, this.equippedSkin, '#ef4444');
     soundEngine.playCollision();
 
     if (obs.type !== 'GIANT_ASTEROID' && obs.type !== 'ENERGY_BARRIER' && obs.type !== 'COSMIC_LEVIATHAN') {
@@ -1275,7 +1372,7 @@ export class GameEngine {
     // 4. Render Particle Effects
     this.particles.render(this.ctx);
 
-    // 5. Render Planet Earth (Player) with Equipped Skin
+    // 5. Render Planet Earth (Player) with Equipped Skin & Stamina Bar
     renderEarth(this.ctx, {
       x: this.earthX,
       y: this.earthY,
@@ -1284,6 +1381,7 @@ export class GameEngine {
       cloudRotation: this.earthCloudRotation,
       verticalTilt: this.earthVy / 300,
       health: this.earthHealth,
+      stamina: this.earthStamina,
       isShielded: this.hasPowerUp('SHIELD'),
       isBoosted: this.hasPowerUp('COSMIC_BOOST'),
       isMagnetized: this.hasPowerUp('MAGNET'),
@@ -1317,7 +1415,7 @@ export class GameEngine {
       this.ctx.restore();
     }
 
-    // 6. Time Control / Chrono Warp Screen Filter
+    // 7. Time Control / Chrono Warp Screen Filter
     if (this.hasPowerUp('TIME_CONTROL')) {
       this.ctx.save();
       this.ctx.fillStyle = 'rgba(168, 85, 247, 0.08)';
@@ -1325,9 +1423,33 @@ export class GameEngine {
       this.ctx.restore();
     }
 
-    // 7. Zone Announcement Banner overlay (if active)
+    // 8. Render Floating Feedback Texts (+50, + ATMOSPHERE)
+    if (this.floatingTexts.length > 0) {
+      this.ctx.save();
+      this.ctx.textAlign = 'center';
+      this.ctx.textBaseline = 'middle';
+      for (const ft of this.floatingTexts) {
+        this.ctx.globalAlpha = ft.alpha;
+        this.ctx.font = '900 16px var(--font-display, sans-serif)';
+        this.ctx.fillStyle = ft.color;
+        this.ctx.shadowColor = ft.color;
+        this.ctx.shadowBlur = 10;
+        this.ctx.fillText(ft.text, ft.x, ft.y);
+      }
+      this.ctx.restore();
+    }
+
+    // 9. Zone Announcement Banner overlay (if active)
     if (this.zoneBanner && this.zoneBannerTimer > 0) {
       this.renderZoneBanner(this.ctx, this.zoneBanner, this.zoneBannerTimer);
+    }
+
+    // 10. Zone Transition 1-sec White Flash
+    if (this.zoneFlashTimer > 0) {
+      this.ctx.save();
+      this.ctx.fillStyle = `rgba(255, 255, 255, ${Math.min(0.85, this.zoneFlashTimer)})`;
+      this.ctx.fillRect(0, 0, CANVAS_VIRTUAL_WIDTH, CANVAS_VIRTUAL_HEIGHT);
+      this.ctx.restore();
     }
 
     this.ctx.restore();
@@ -1338,23 +1460,29 @@ export class GameEngine {
     const alpha = Math.min(1, timer, (3.5 - timer) * 2);
     ctx.globalAlpha = alpha;
 
-    ctx.fillStyle = 'rgba(2, 6, 23, 0.75)';
-    ctx.fillRect(0, CANVAS_VIRTUAL_HEIGHT * 0.22, CANVAS_VIRTUAL_WIDTH, 70);
+    ctx.fillStyle = 'rgba(2, 6, 23, 0.85)';
+    ctx.fillRect(0, CANVAS_VIRTUAL_HEIGHT * 0.20, CANVAS_VIRTUAL_WIDTH, 84);
 
     ctx.strokeStyle = '#38bdf8';
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(0, CANVAS_VIRTUAL_HEIGHT * 0.22);
-    ctx.lineTo(CANVAS_VIRTUAL_WIDTH, CANVAS_VIRTUAL_HEIGHT * 0.22);
-    ctx.moveTo(0, CANVAS_VIRTUAL_HEIGHT * 0.22 + 70);
-    ctx.lineTo(CANVAS_VIRTUAL_WIDTH, CANVAS_VIRTUAL_HEIGHT * 0.22 + 70);
+    ctx.moveTo(0, CANVAS_VIRTUAL_HEIGHT * 0.20);
+    ctx.lineTo(CANVAS_VIRTUAL_WIDTH, CANVAS_VIRTUAL_HEIGHT * 0.20);
+    ctx.moveTo(0, CANVAS_VIRTUAL_HEIGHT * 0.20 + 84);
+    ctx.lineTo(CANVAS_VIRTUAL_WIDTH, CANVAS_VIRTUAL_HEIGHT * 0.20 + 84);
     ctx.stroke();
 
-    ctx.font = '800 24px var(--font-display)';
+    // Main Banner: NEW ZONE - [Zone Name]
+    ctx.font = '900 24px var(--font-display, sans-serif)';
     ctx.fillStyle = '#f8fafc';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(bannerText.toUpperCase(), CANVAS_VIRTUAL_WIDTH / 2, CANVAS_VIRTUAL_HEIGHT * 0.22 + 35);
+    ctx.fillText(`NEW ZONE — ${bannerText.toUpperCase()}`, CANVAS_VIRTUAL_WIDTH / 2, CANVAS_VIRTUAL_HEIGHT * 0.20 + 30);
+
+    // Subtitle: NEW ENEMIES AHEAD
+    ctx.font = '700 13px var(--font-mono, monospace)';
+    ctx.fillStyle = '#f59e0b';
+    ctx.fillText('⚡ NEW ENEMIES AHEAD — STAY ALERT ⚡', CANVAS_VIRTUAL_WIDTH / 2, CANVAS_VIRTUAL_HEIGHT * 0.20 + 58);
 
     ctx.restore();
   }

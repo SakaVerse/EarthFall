@@ -118,16 +118,18 @@ export const TouchControls: React.FC<TouchControlsProps> = ({
                 disabled={!ready}
                 className={`relative flex flex-col items-center justify-center w-12 h-12 rounded-xl border transition-all active:scale-90 ${
                   s.isActive
-                    ? 'bg-sky-500/60 border-sky-300 text-white shadow-[0_0_16px_#38bdf8] scale-105'
+                    ? 'bg-sky-500/60 border-sky-300 text-white shadow-[0_0_18px_#38bdf8] scale-105 ring-2 ring-sky-400'
                     : ready
-                    ? 'bg-slate-900/80 border-sky-400/50 text-white shadow-md hover:border-sky-300'
-                    : 'bg-slate-950/50 border-slate-800 text-slate-500 opacity-60'
+                    ? 'bg-sky-950/80 border-sky-400 text-white shadow-[0_0_14px_rgba(56,189,248,0.7)] animate-pulse ring-1 ring-sky-400/60'
+                    : 'bg-slate-950/60 border-slate-800 text-slate-500 opacity-60'
                 }`}
                 aria-label={s.name}
               >
                 {getSkillIcon(s.type)}
-                <span className="text-[8px] font-mono font-bold leading-none mt-1">
-                  {s.isActive ? 'ACT' : ready ? 'READY' : `${Math.ceil(s.cooldownRemaining)}s`}
+                <span className={`text-[8px] font-mono font-bold leading-none mt-1 ${
+                  ready ? 'text-sky-300 font-black' : 'text-slate-400'
+                }`}>
+                  {s.isActive ? 'ACT' : ready ? 'READY' : `${s.cooldownRemaining.toFixed(1)}s`}
                 </span>
               </button>
             );

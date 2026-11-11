@@ -3,7 +3,7 @@ import { ZoneConfig, ZoneId } from './types';
 export const CANVAS_VIRTUAL_WIDTH = 1280;
 export const CANVAS_VIRTUAL_HEIGHT = 720;
 
-export const EARTH_RADIUS = 36;
+export const EARTH_RADIUS = 43; // 20% bigger (from 36) for enhanced player visibility
 export const GRAVITY = 720; // pixels / s^2 downward
 export const JUMP_IMPULSE = -390; // pixels / s upward
 export const DIVE_IMPULSE = 420; // downward quick dodge
