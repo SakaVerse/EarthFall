@@ -44,7 +44,7 @@ import { CosmeticsManager } from './cosmetics';
 import { DailyMissionsManager } from './dailyMissions';
 import { LeaderboardManager } from './leaderboard';
 
-const HIGH_SCORE_KEY = 'earthfall_high_scores';
+const HIGH_SCORE_KEY = 'earthfall_high_scores_v3';
 
 export class GameEngine {
   public canvas: HTMLCanvasElement;

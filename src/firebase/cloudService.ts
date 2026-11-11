@@ -367,6 +367,21 @@ export class CloudService {
         limit(10)
       );
 
+const BOT_NAMES_SET = new Set([
+  'cosmocaptain',
+  'stargazer_77',
+  'pulsardrifter',
+  'nebulaghost',
+  'solarisprime',
+  'orionhunter',
+  'zerog_pilot',
+  'astrovanguard',
+  'galaxyrider',
+  'novaseeker',
+  'voidwalker',
+  'starstriker',
+]);
+
       const handleSnapshot = (snapshot: any) => {
         if (isDisposed) return;
         const entries: LeaderboardEntry[] = [];
@@ -378,8 +393,14 @@ export class CloudService {
             typeof data.score === 'number' &&
             data.score > 0
           ) {
+            const lower = data.nickname.trim().toLowerCase();
+            // 100% real human players only - purge all bot entries
+            if (BOT_NAMES_SET.has(lower)) {
+              return;
+            }
+
             entries.push({
-              username: data.nickname,
+              username: data.nickname.trim(),
               score: data.score,
               zone: data.zone || 'Zone 1: Solar System Outskirts',
               date: data.dateKey || dateKey,

@@ -200,6 +200,19 @@ export default function App() {
       }
     };
 
+    // Clean season reset: Purge all history scores and start fresh from 0 everywhere
+    const CLEAN_SEASON_FLAG = 'earthfall_clean_season_v3_wiped';
+    if (!localStorage.getItem(CLEAN_SEASON_FLAG)) {
+      try {
+        localStorage.removeItem('earthfall_high_scores');
+        localStorage.removeItem('earthfall_best_score');
+        localStorage.removeItem('earthfall_total_distance');
+        localStorage.removeItem('earthfall_daily_missions');
+        localStorage.removeItem('earthfall_missions_date');
+        localStorage.setItem(CLEAN_SEASON_FLAG, 'true');
+      } catch {}
+    }
+
     engine.init();
     setBestScore(engine.getBestScore());
     DailyMissionsManager.checkAndRecordStreak();
@@ -220,9 +233,12 @@ export default function App() {
               LeaderboardManager.setUsername(profile.nickname);
               setShowUsernamePrompt(false);
             }
-            // Automatically load BEST score
-            if (typeof profile.bestScore === 'number' && profile.bestScore > 0) {
-              setBestScore((prev) => Math.max(prev, profile.bestScore || 0));
+            // Fresh season score starting from 0 (purges old bot/test scores)
+            const seasonBest = (profile as any).season3BestScore;
+            if (typeof seasonBest === 'number' && seasonBest > 0) {
+              setBestScore((prev) => Math.max(prev, seasonBest));
+            } else {
+              setBestScore(engineRef.current ? engineRef.current.getBestScore() : 0);
             }
             // Automatically load coins / scrap balance
             const cloudCoins = profile.scrapBalance ?? profile.coins;
@@ -247,7 +263,6 @@ export default function App() {
         }
       }
     });
-    return () => unsub();
   }, []);
 
   // Update engine when screen shake setting changes

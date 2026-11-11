@@ -118,6 +118,19 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /daily_scores_v2/{scoreId} {
+      allow read: if true;
+      allow create: if isValidId(scoreId) &&
+                       isValidDailyScore(incoming()) &&
+                       isCaller(incoming().uid);
+      allow update: if isValidId(scoreId) &&
+                       isValidDailyScore(incoming()) &&
+                       incoming().uid == existing().uid &&
+                       incoming().score >= existing().score &&
+                       isCaller(incoming().uid);
+      allow delete: if false;
+    }
+
     // Legacy fallback compatibility for leaderboard collection during migration
     match /leaderboard/{entryId} {
       allow read: if true;

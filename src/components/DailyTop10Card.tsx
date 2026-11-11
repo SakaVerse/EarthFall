@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Trophy, Crown, Medal, Clock, Cloud, ArrowRight } from 'lucide-react';
 import { LeaderboardManager } from '../game/leaderboard';
 import { LeaderboardEntry } from '../game/types';
+import { getTimeUntilMidnightIST } from '../utils/date';
 
 interface DailyTop10CardProps {
   onOpenFullLeaderboard?: () => void;
@@ -14,12 +15,20 @@ export const DailyTop10Card: React.FC<DailyTop10CardProps> = ({
 }) => {
   const [entries, setEntries] = useState<LeaderboardEntry[]>(() => LeaderboardManager.getLeaderboard().slice(0, 10));
   const [dateKey, setDateKey] = useState<string>(() => LeaderboardManager.getTodayDateString());
+  const [countdown, setCountdown] = useState<string>(() => getTimeUntilMidnightIST().formatted);
 
   useEffect(() => {
     return LeaderboardManager.subscribe((liveEntries, activeDate) => {
       setEntries(liveEntries.slice(0, 10));
       setDateKey(activeDate);
     });
+  }, []);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCountdown(getTimeUntilMidnightIST().formatted);
+    }, 1000);
+    return () => clearInterval(timer);
   }, []);
 
   return (
@@ -33,16 +42,17 @@ export const DailyTop10Card: React.FC<DailyTop10CardProps> = ({
           <div>
             <div className="flex items-center gap-1.5">
               <span className="font-display font-black text-white tracking-wide text-xs sm:text-sm">
-                Today's Top 10 Global Leaderboard
+                Today's Top 10 Global Standings
               </span>
-              <span className="flex items-center gap-1 text-[8.5px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-1 py-0.2 rounded-full">
+              <span className="flex items-center gap-1 text-[8.5px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-1.5 py-0.2 rounded-full">
                 <Cloud className="w-2 h-2 animate-pulse" />
-                LIVE
+                REAL-TIME
               </span>
             </div>
             <div className="flex items-center gap-1 text-[9.5px] font-mono text-sky-300/80">
-              <Clock className="w-2.5 h-2.5" />
-              <span>Resets daily at 12:00 AM</span>
+              <Clock className="w-2.5 h-2.5 text-sky-400" />
+              <span>Resets at 12:00 AM IST:</span>
+              <span className="text-amber-300 font-bold">{countdown}</span>
               <span className="text-slate-500">({dateKey})</span>
             </div>
           </div>
@@ -51,7 +61,7 @@ export const DailyTop10Card: React.FC<DailyTop10CardProps> = ({
         {onOpenFullLeaderboard && (
           <button
             onClick={onOpenFullLeaderboard}
-            className="flex items-center gap-1 text-[10px] font-mono text-sky-400 hover:text-sky-300 font-bold hover:underline cursor-pointer"
+            className="flex items-center gap-1 text-[10px] font-mono text-sky-400 hover:text-sky-300 font-bold hover:underline cursor-pointer shrink-0"
           >
             <span>View All</span>
             <ArrowRight className="w-3 h-3" />
@@ -61,21 +71,21 @@ export const DailyTop10Card: React.FC<DailyTop10CardProps> = ({
 
       {/* Table Content or Empty State */}
       {entries.length === 0 ? (
-        <div className="py-4 px-2 text-center flex flex-col items-center justify-center">
-          <p className="text-xs font-mono font-semibold text-slate-300">
-            No scores yet—be the first!
+        <div className="py-5 px-2 text-center flex flex-col items-center justify-center">
+          <p className="text-xs font-mono font-bold text-white">
+            Cycle started fresh at 0!
           </p>
-          <span className="text-[10px] font-mono text-slate-500 mt-0.5">
-            Play a run to claim Rank #1 for today.
+          <span className="text-[10px] font-mono text-slate-400 mt-0.5">
+            Play a run to claim Rank #1 in today's standings.
           </span>
         </div>
       ) : (
-        <div className={`space-y-1.5 overflow-y-auto custom-scrollbar ${compact ? 'max-h-[160px]' : 'max-h-[220px]'}`}>
+        <div className={`space-y-1.5 overflow-y-auto pt-1 pb-1 custom-scrollbar ${compact ? 'max-h-[160px]' : 'max-h-[220px]'}`}>
           {/* Table Header */}
-          <div className="grid grid-cols-12 text-[9px] font-mono uppercase text-slate-500 font-bold px-2 py-0.5 border-b border-slate-900">
+          <div className="grid grid-cols-12 text-[9px] font-mono uppercase text-slate-400 font-bold px-2 py-0.5 border-b border-slate-900">
             <span className="col-span-2">Rank</span>
-            <span className="col-span-6">Nickname</span>
-            <span className="col-span-4 text-right">Score</span>
+            <span className="col-span-6">Callsign</span>
+            <span className="col-span-4 text-right">Points</span>
           </div>
 
           {entries.map((entry) => {
@@ -88,13 +98,13 @@ export const DailyTop10Card: React.FC<DailyTop10CardProps> = ({
                 key={`${entry.username}_${entry.rank}`}
                 className={`grid grid-cols-12 items-center px-2 py-1.5 rounded-xl border text-[11px] sm:text-xs transition-colors ${
                   entry.isCurrentPlayer
-                    ? 'bg-sky-950/80 border-sky-400/80 text-sky-200 shadow-sm ring-1 ring-sky-400/40'
+                    ? 'bg-gradient-to-r from-cyan-950/90 to-sky-950/80 border-cyan-400 text-cyan-200 shadow-sm ring-1 ring-cyan-400/50'
                     : isTop1
-                    ? 'bg-amber-950/30 border-amber-500/40 text-amber-200'
+                    ? 'bg-gradient-to-r from-amber-950/60 to-slate-900 border-amber-400/80 text-amber-200 shadow-[0_0_10px_rgba(245,158,11,0.2)]'
                     : isTop2
-                    ? 'bg-slate-900/60 border-slate-700/60 text-slate-200'
+                    ? 'bg-slate-900/80 border-slate-400/60 text-slate-200'
                     : isTop3
-                    ? 'bg-amber-950/20 border-amber-700/30 text-amber-300'
+                    ? 'bg-amber-950/30 border-amber-700/50 text-amber-300'
                     : 'bg-slate-950/60 border-slate-900 text-slate-300'
                 }`}
               >
@@ -107,17 +117,17 @@ export const DailyTop10Card: React.FC<DailyTop10CardProps> = ({
                   ) : isTop3 ? (
                     <Medal className="w-3.5 h-3.5 text-amber-600" />
                   ) : (
-                    <span className="text-slate-500 text-[10px]">#{entry.rank}</span>
+                    <span className="text-slate-400 text-[10px]">#{entry.rank}</span>
                   )}
                 </div>
 
                 {/* Nickname */}
                 <div className="col-span-6 flex items-center gap-1.5 truncate pr-1">
-                  <span className={`font-mono font-bold truncate ${entry.isCurrentPlayer ? 'text-sky-300 font-black' : isTop1 ? 'text-amber-300' : 'text-slate-100'}`}>
+                  <span className={`font-mono font-bold truncate ${entry.isCurrentPlayer ? 'text-cyan-300 font-black' : isTop1 ? 'text-amber-300 font-black' : 'text-slate-100'}`}>
                     {entry.username}
                   </span>
                   {entry.isCurrentPlayer && (
-                    <span className="text-[8px] font-mono font-black bg-sky-500/20 text-sky-300 px-1 py-0.2 rounded border border-sky-400/40 shrink-0">
+                    <span className="text-[8px] font-mono font-black bg-cyan-500/25 text-cyan-200 px-1 py-0.2 rounded border border-cyan-400/50 shrink-0">
                       YOU
                     </span>
                   )}
