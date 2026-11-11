@@ -1,0 +1,99 @@
+{
+  "entities": {
+    "LeaderboardEntry": {
+      "title": "Daily Leaderboard Entry",
+      "description": "A high score entry on the global daily cosmic leaderboard tagged with date in IST",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "username": {
+          "type": "string",
+          "maxLength": 20,
+          "minLength": 3,
+          "pattern": "^[a-zA-Z0-9_]+$"
+        },
+        "usernameLower": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "score": {
+          "type": "number"
+        },
+        "date": {
+          "type": "string",
+          "maxLength": 16,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "distance": {
+          "type": "number"
+        },
+        "zone": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "skin": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "updatedAt": {
+          "type": "string",
+          "maxLength": 64
+        }
+      },
+      "required": ["userId", "username", "score", "date"]
+    },
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "User account profile and persistent cosmic progress save",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "username": {
+          "type": "string",
+          "maxLength": 20,
+          "minLength": 3,
+          "pattern": "^[a-zA-Z0-9_]+$"
+        },
+        "scrapBalance": {
+          "type": "number"
+        },
+        "bestScore": {
+          "type": "number"
+        },
+        "bestDistance": {
+          "type": "number"
+        },
+        "unlockedSkins": {
+          "type": "array"
+        },
+        "unlockedThemes": {
+          "type": "array"
+        },
+        "streak": {
+          "type": "number"
+        },
+        "updatedAt": {
+          "type": "string",
+          "maxLength": 64
+        }
+      },
+      "required": ["userId", "username", "scrapBalance"]
+    }
+  },
+  "firestore": {
+    "/leaderboard/{entryId}": {
+      "schema": "LeaderboardEntry",
+      "description": "Global daily leaderboard entries submitted by verified or active players"
+    },
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Private user cloud save data and account settings"
+    }
+  }
+}

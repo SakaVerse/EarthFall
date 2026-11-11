@@ -1,8 +1,10 @@
-import React from 'react';
-import { Volume2, VolumeX, Play, Settings, Trophy, ShoppingBag, Target, ListOrdered } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Volume2, VolumeX, Play, Settings, Trophy, ShoppingBag, Target, ListOrdered, Cloud, LogIn, LogOut } from 'lucide-react';
 import { soundEngine } from '../game/audio';
 import { DailyMissionsManager } from '../game/dailyMissions';
 import { CosmeticsManager } from '../game/cosmetics';
+import { AuthService } from '../firebase/authService';
+import { User } from 'firebase/auth';
 
 interface TitleScreenProps {
   onStart: () => void;
@@ -29,20 +31,79 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 }) => {
   const unclaimedCount = DailyMissionsManager.getUnclaimedCount();
   const scrapBalance = CosmeticsManager.getScrapBalance();
+  const [authUser, setAuthUser] = useState<User | null>(() => AuthService.getUser());
+  const [isSigningIn, setIsSigningIn] = useState(false);
+
+  useEffect(() => {
+    return AuthService.subscribe((user) => {
+      setAuthUser(user);
+    });
+  }, []);
+
+  const handleGoogleAuth = async () => {
+    soundEngine.playClick();
+    if (authUser && !authUser.isAnonymous) {
+      const confirmSignOut = window.confirm('Sign out of your Google Account?');
+      if (confirmSignOut) {
+        await AuthService.signOut();
+      }
+      return;
+    }
+
+    try {
+      setIsSigningIn(true);
+      await AuthService.signInWithGoogle();
+    } catch (err) {
+      console.warn('Google sign in error:', err);
+    } finally {
+      setIsSigningIn(false);
+    }
+  };
+
+  const isRealUser = authUser && !authUser.isAnonymous;
 
   return (
     <div className="absolute inset-0 flex flex-col justify-between items-center p-2.5 sm:p-6 pt-[max(0.6rem,env(safe-area-inset-top))] pb-[max(0.5rem,env(safe-area-inset-bottom))] pl-[max(0.6rem,env(safe-area-inset-left))] pr-[max(0.6rem,env(safe-area-inset-right))] pointer-events-none select-none z-30 overflow-hidden">
       {/* TOP HEADER: BEST SCORE & AUDIO / SETTINGS */}
       <div className="w-full flex justify-between items-center max-w-4xl pointer-events-auto">
-        {/* Best Score Pill */}
-        <div className="flex items-center gap-1.5 sm:gap-2 bg-slate-950/85 backdrop-blur-md px-2.5 py-1.5 sm:px-3.5 sm:py-2 rounded-xl sm:rounded-2xl border border-sky-500/30 shadow-lg">
-          <Trophy className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
-          <span className="text-[9px] sm:text-[10px] font-mono uppercase text-slate-400 font-bold tracking-wider">
-            BEST
-          </span>
-          <span className="text-xs sm:text-base font-mono-numbers font-black text-white text-glow-cyan">
-            {bestScore.toLocaleString()}
-          </span>
+        {/* Best Score & Cloud Sync Pill */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 bg-slate-950/85 backdrop-blur-md px-2.5 py-1.5 sm:px-3.5 sm:py-2 rounded-xl sm:rounded-2xl border border-sky-500/30 shadow-lg">
+            <Trophy className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
+            <span className="text-[9px] sm:text-[10px] font-mono uppercase text-slate-400 font-bold tracking-wider">
+              BEST
+            </span>
+            <span className="text-xs sm:text-base font-mono-numbers font-black text-white text-glow-cyan">
+              {bestScore.toLocaleString()}
+            </span>
+          </div>
+
+          {/* Cloud Auth Status Pill */}
+          <button
+            onClick={handleGoogleAuth}
+            disabled={isSigningIn}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl sm:rounded-2xl border backdrop-blur-md text-[10px] sm:text-xs font-mono transition-all shadow-md active:scale-95 cursor-pointer ${
+              isRealUser
+                ? 'bg-emerald-950/70 border-emerald-500/40 text-emerald-300 hover:bg-emerald-900/70'
+                : 'bg-slate-950/85 border-slate-700/70 text-slate-300 hover:bg-slate-900 hover:border-sky-500/40'
+            }`}
+            title={isRealUser ? `Signed in as ${authUser.displayName || authUser.email}` : 'Sign in with Google for cloud saves'}
+          >
+            {isRealUser ? (
+              <>
+                <Cloud className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="max-w-[70px] sm:max-w-[100px] truncate font-bold">
+                  {authUser.displayName || 'Pilot'}
+                </span>
+                <LogOut className="w-3 h-3 text-emerald-500/70 hover:text-emerald-300" />
+              </>
+            ) : (
+              <>
+                <LogIn className="w-3.5 h-3.5 text-sky-400" />
+                <span className="font-bold">{isSigningIn ? 'Connecting...' : 'Cloud Save'}</span>
+              </>
+            )}
+          </button>
         </div>
 
         {/* Currency & Quick Settings */}

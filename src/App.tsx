@@ -17,6 +17,8 @@ import { LeaderboardManager } from './game/leaderboard';
 import { soundEngine } from './game/audio';
 import { CosmeticsManager } from './game/cosmetics';
 import { DailyMissionsManager } from './game/dailyMissions';
+import { AuthService } from './firebase/authService';
+import { CloudService } from './firebase/cloudService';
 import { detectDevice } from './utils/device';
 import { RotateCw } from 'lucide-react';
 
@@ -31,6 +33,7 @@ export default function App() {
   const [showDailyMissions, setShowDailyMissions] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showUsernamePrompt, setShowUsernamePrompt] = useState<boolean>(() => !LeaderboardManager.getUsername());
+  const [usernamePromptError, setUsernamePromptError] = useState<string | null>(null);
 
   // Device Auto-Detection
   const [detectedIsMobile, setDetectedIsMobile] = useState<boolean>(() => detectDevice().isMobile);
@@ -123,6 +126,16 @@ export default function App() {
       if (newState === 'GAME_OVER') {
         setBestScore(engine.getBestScore());
         setCoinsEarnedThisRun(engine.scrapCollectedThisRun);
+        // Persist real player progress to Firebase Firestore cloud profile
+        CloudService.saveUserProfile({
+          username: LeaderboardManager.getUsername() || 'CosmicPilot',
+          scrapBalance: CosmeticsManager.getScrapBalance(),
+          bestScore: engine.getBestScore(),
+          bestDistance: engine.stats.distance,
+          unlockedSkins: CosmeticsManager.getUnlockedSkins(),
+          unlockedThemes: [CosmeticsManager.getEquippedTheme()],
+          streak: DailyMissionsManager.getStreakData().currentStreak,
+        }).catch(() => {});
       }
     };
 
@@ -170,6 +183,34 @@ export default function App() {
     };
   }, []);
 
+  // Synchronize Cloud Save with Firebase Firestore when logged in
+  useEffect(() => {
+    const unsub = AuthService.subscribe(async (user) => {
+      if (user && !user.isAnonymous) {
+        try {
+          const profile = await CloudService.loadUserProfile();
+          if (profile) {
+            if (typeof profile.scrapBalance === 'number') {
+              const mergedScrap = Math.max(CosmeticsManager.getScrapBalance(), profile.scrapBalance);
+              CosmeticsManager.setScrapBalance(mergedScrap);
+              setScrapBalance(mergedScrap);
+            }
+            if (profile.username && !LeaderboardManager.getUsername()) {
+              LeaderboardManager.setUsername(profile.username);
+              setShowUsernamePrompt(false);
+            }
+            if (Array.isArray(profile.unlockedSkins)) {
+              CosmeticsManager.syncUnlockedSkins(profile.unlockedSkins as SkinId[]);
+            }
+          }
+        } catch (e) {
+          console.warn('Could not load cloud user profile:', e);
+        }
+      }
+    });
+    return () => unsub();
+  }, []);
+
   // Update engine when screen shake setting changes
   useEffect(() => {
     if (engineRef.current) {
@@ -199,7 +240,7 @@ export default function App() {
 
       if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
         if (gameState === 'TITLE' && !showHowToPlay && !showSettings && !showSkinShop && !showDailyMissions && !showLeaderboard && !showUsernamePrompt) {
-          engineRef.current.startGame();
+          handleStartGame();
         } else if (gameState === 'PLAYING') {
           engineRef.current.applyJump();
         }
@@ -249,7 +290,22 @@ export default function App() {
     }
   }, []);
 
-  const handleStartGame = useCallback(() => {
+  const handleStartGame = useCallback(async () => {
+    const currentUsername = LeaderboardManager.getUsername();
+    if (!currentUsername) {
+      setUsernamePromptError(null);
+      setShowUsernamePrompt(true);
+      return;
+    }
+
+    // Query Firestore to verify username is not taken by someone else today
+    const isTaken = await LeaderboardManager.isUsernameTakenToday(currentUsername);
+    if (isTaken) {
+      setUsernamePromptError('Username already taken');
+      setShowUsernamePrompt(true);
+      return;
+    }
+
     if (engineRef.current) {
       engineRef.current.startGame();
     }
@@ -347,12 +403,16 @@ export default function App() {
           </div>
         )}
 
-        {/* FIRST-TIME USERNAME MODAL */}
+        {/* FIRST-TIME / CHANGE USERNAME MODAL */}
         {showUsernamePrompt && (
           <UsernameModal
+            initialError={usernamePromptError}
             onComplete={(_name) => {
+              setUsernamePromptError(null);
               setShowUsernamePrompt(false);
-              handleStartGame();
+              if (engineRef.current) {
+                engineRef.current.startGame();
+              }
             }}
           />
         )}

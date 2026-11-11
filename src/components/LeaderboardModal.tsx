@@ -1,15 +1,25 @@
-import React from 'react';
-import { X, Trophy, Medal, Crown } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Trophy, Medal, Crown, Cloud } from 'lucide-react';
 import { LeaderboardManager } from '../game/leaderboard';
 import { soundEngine } from '../game/audio';
+import { LeaderboardEntry } from '../game/types';
 
 interface LeaderboardModalProps {
   onClose: () => void;
 }
 
 export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ onClose }) => {
-  const entries = LeaderboardManager.getLeaderboard();
+  const [entries, setEntries] = useState<LeaderboardEntry[]>(() => LeaderboardManager.getLeaderboard());
+  const [activeDate, setActiveDate] = useState<string>(() => LeaderboardManager.getTodayDateString());
   const currentUsername = LeaderboardManager.getUsername();
+
+  useEffect(() => {
+    const unsub = LeaderboardManager.subscribe((updated, date) => {
+      setEntries(updated);
+      setActiveDate(date);
+    });
+    return () => unsub();
+  }, []);
 
   return (
     <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 z-50 animate-fadeIn select-none">
@@ -21,11 +31,17 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ onClose }) =
               <Trophy className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-lg sm:text-xl font-display font-black text-white tracking-wide">
-                GLOBAL LEADERBOARD
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg sm:text-xl font-display font-black text-white tracking-wide">
+                  GLOBAL LEADERBOARD
+                </h3>
+                <span className="flex items-center gap-1 text-[9px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-1.5 py-0.5 rounded-full">
+                  <Cloud className="w-2.5 h-2.5 animate-pulse" />
+                  LIVE
+                </span>
+              </div>
               <p className="text-[11px] font-mono text-slate-400">
-                Top pilots braving the uncharted cosmos
+                Daily Top 20 &bull; Resets 12:00 AM IST ({activeDate})
               </p>
             </div>
           </div>
@@ -60,7 +76,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ onClose }) =
                 No scores yet - Be the first!
               </h4>
               <p className="text-xs font-mono text-slate-400 max-w-xs">
-                Launch Earth into deep space, dodge cosmic hazards, and claim Rank #1 on the leaderboard.
+                Launch Earth into deep space, dodge cosmic hazards, and claim Rank #1 on today's leaderboard.
               </p>
             </div>
           ) : (
@@ -96,9 +112,11 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ onClose }) =
 
                     <div className="flex flex-col">
                       <div className="flex items-center gap-2">
-                        <span className={`font-bold font-mono tracking-tight ${
-                          entry.isCurrentPlayer ? 'text-sky-300 font-black' : isTop1 ? 'text-amber-300' : 'text-slate-100'
-                        }`}>
+                        <span
+                          className={`font-bold font-mono tracking-tight ${
+                            entry.isCurrentPlayer ? 'text-sky-300 font-black' : isTop1 ? 'text-amber-300' : 'text-slate-100'
+                          }`}
+                        >
                           {entry.username}
                         </span>
                         {entry.isCurrentPlayer && (

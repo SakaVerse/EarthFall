@@ -465,6 +465,27 @@ export class CosmeticsManager {
     return updated;
   }
 
+  public static setScrapBalance(amount: number): number {
+    const updated = Math.max(0, Math.round(amount));
+    try {
+      localStorage.setItem(SCRAP_STORAGE_KEY, updated.toString());
+    } catch (e) {}
+    return updated;
+  }
+
+  public static syncUnlockedSkins(skinIds: SkinId[]): void {
+    if (!Array.isArray(skinIds)) return;
+    const current = new Set(this.getUnlockedSkins());
+    for (const id of skinIds) {
+      if (SKINS[id]) {
+        current.add(id);
+      }
+    }
+    try {
+      localStorage.setItem(UNLOCKED_SKINS_KEY, JSON.stringify(Array.from(current)));
+    } catch (e) {}
+  }
+
   public static spendScrap(amount: number): boolean {
     const current = this.getScrapBalance();
     if (current < amount) return false;

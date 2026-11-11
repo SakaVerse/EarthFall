@@ -363,7 +363,12 @@ export class GameEngine {
     soundEngine.stopMusic();
     soundEngine.playGameOver();
     this.saveHighScore();
-    LeaderboardManager.submitScore(this.stats.score, ZONES[this.stats.zone].name);
+    LeaderboardManager.submitScore(
+      this.stats.score,
+      ZONES[this.stats.zone].name,
+      this.stats.distance,
+      this.equippedSkin.id
+    );
     if (this.onStateChange) this.onStateChange(this.state);
   }
 

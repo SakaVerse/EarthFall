@@ -1,15 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { User, Rocket, AlertCircle } from 'lucide-react';
+import { User, Rocket, AlertCircle, Loader2 } from 'lucide-react';
 import { LeaderboardManager } from '../game/leaderboard';
 import { soundEngine } from '../game/audio';
 
 interface UsernameModalProps {
   onComplete: (username: string) => void;
+  initialError?: string | null;
 }
 
-export const UsernameModal: React.FC<UsernameModalProps> = ({ onComplete }) => {
-  const [username, setUsername] = useState('');
-  const [error, setError] = useState<string | null>(null);
+export const UsernameModal: React.FC<UsernameModalProps> = ({ onComplete, initialError }) => {
+  const [username, setUsername] = useState(() => LeaderboardManager.getUsername() || '');
+  const [error, setError] = useState<string | null>(initialError || null);
+  const [isChecking, setIsChecking] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -20,40 +22,45 @@ export const UsernameModal: React.FC<UsernameModalProps> = ({ onComplete }) => {
     return () => clearTimeout(timer);
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isChecking) return;
     soundEngine.playClick();
 
     const trimmed = username.trim();
-    if (!trimmed) {
-      setError('Please enter a username');
-      inputRef.current?.focus();
-      return;
-    }
-    if (trimmed.length < 3 || trimmed.length > 15) {
-      setError('Username must be 3-15 characters');
-      inputRef.current?.focus();
-      return;
-    }
-    if (!/^[a-zA-Z0-9_]+$/.test(trimmed)) {
-      setError('Only letters, numbers, and underscores (_) allowed');
+    const formatCheck = LeaderboardManager.validateUsernameFormat(trimmed);
+    if (!formatCheck.valid) {
+      setError(formatCheck.error || 'Invalid username');
       inputRef.current?.focus();
       return;
     }
 
-    if (LeaderboardManager.isUsernameTaken(trimmed)) {
-      setError('Username already taken, try another');
-      inputRef.current?.focus();
-      return;
-    }
+    setIsChecking(true);
+    setError(null);
 
-    const res = LeaderboardManager.setUsername(trimmed);
-    if (!res.success) {
-      setError(res.error || 'Failed to save username');
-      return;
-    }
+    try {
+      // Query Cloud Firestore to check if username is already taken for today's date
+      const isTaken = await LeaderboardManager.isUsernameTakenToday(trimmed);
+      if (isTaken) {
+        setError('Username already taken');
+        inputRef.current?.focus();
+        setIsChecking(false);
+        return;
+      }
 
-    onComplete(trimmed);
+      const res = LeaderboardManager.setUsername(trimmed);
+      if (!res.success) {
+        setError(res.error || 'Failed to save username');
+        setIsChecking(false);
+        return;
+      }
+
+      onComplete(trimmed);
+    } catch {
+      setError('Connection error, please try again');
+    } finally {
+      setIsChecking(false);
+    }
   };
 
   return (
@@ -107,7 +114,8 @@ export const UsernameModal: React.FC<UsernameModalProps> = ({ onComplete }) => {
               autoCorrect="off"
               autoCapitalize="none"
               spellCheck="false"
-              className="w-full pl-10 pr-4 py-2.5 sm:py-3 rounded-2xl bg-slate-950/90 border border-slate-700 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-400/40 text-sm font-mono text-white placeholder-slate-500 transition-all"
+              disabled={isChecking}
+              className="w-full pl-10 pr-4 py-2.5 sm:py-3 rounded-2xl bg-slate-950/90 border border-slate-700 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-400/40 text-sm font-mono text-white placeholder-slate-500 transition-all disabled:opacity-60"
             />
           </div>
 
@@ -124,9 +132,11 @@ export const UsernameModal: React.FC<UsernameModalProps> = ({ onComplete }) => {
 
           <button
             type="submit"
-            className="w-full mt-1 sm:mt-2 py-2.5 sm:py-3 px-6 bg-gradient-to-r from-sky-500 via-blue-600 to-indigo-600 hover:from-sky-400 hover:to-blue-500 text-white font-black rounded-2xl shadow-[0_0_25px_rgba(56,189,248,0.5)] active:scale-95 transition-all text-xs sm:text-sm tracking-wider cursor-pointer"
+            disabled={isChecking}
+            className="w-full mt-1 sm:mt-2 py-2.5 sm:py-3 px-6 bg-gradient-to-r from-sky-500 via-blue-600 to-indigo-600 hover:from-sky-400 hover:to-blue-500 disabled:opacity-60 text-white font-black rounded-2xl shadow-[0_0_25px_rgba(56,189,248,0.5)] active:scale-95 transition-all text-xs sm:text-sm tracking-wider cursor-pointer flex items-center justify-center gap-2"
           >
-            SAVE & LAUNCH
+            {isChecking && <Loader2 className="w-4 h-4 animate-spin text-white" />}
+            <span>{isChecking ? 'VERIFYING...' : 'SAVE & LAUNCH'}</span>
           </button>
         </form>
       </div>

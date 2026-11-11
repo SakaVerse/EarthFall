@@ -1,23 +1,53 @@
 import { LeaderboardEntry } from './types';
+import { CloudService } from '../firebase/cloudService';
+import { getTodayISTDateString } from '../utils/date';
 
 const USERNAME_KEY = 'earthfall_username';
-const LEADERBOARD_KEY = 'earthfall_global_leaderboard';
-
-// Bot names to filter out completely from any stored data
-const BOT_NAMES = new Set([
-  'astronova',
-  'voidrunner_x',
-  'cosmocaptain',
-  'stargazer_77',
-  'pulsardrifter',
-  'nebulaghost',
-  'solarisprime',
-  'orionhunter',
-  'zerog_pilot',
-  'terraecho',
-]);
 
 export class LeaderboardManager {
+  private static subscribers: Array<(entries: LeaderboardEntry[], date: string) => void> = [];
+  private static liveEntries: LeaderboardEntry[] = [];
+  private static activeDate: string = getTodayISTDateString();
+  private static cloudUnsubscribe: (() => void) | null = null;
+  private static isInitialized = false;
+
+  /**
+   * Initializes real-time listener to Cloud Firestore for today's daily leaderboard.
+   * Filtered by today's date string (Asia/Kolkata IST) and limited to top 20.
+   */
+  public static initCloudSync(): void {
+    if (this.isInitialized) return;
+    this.isInitialized = true;
+
+    try {
+      this.cloudUnsubscribe = CloudService.subscribeDailyLeaderboard((cloudEntries, date) => {
+        this.liveEntries = Array.isArray(cloudEntries) ? cloudEntries : [];
+        this.activeDate = date;
+        this.notifySubscribers();
+      });
+    } catch (e) {
+      console.warn('Leaderboard cloud sync initialization notice:', e);
+    }
+  }
+
+  public static subscribe(callback: (entries: LeaderboardEntry[], date: string) => void): () => void {
+    this.subscribers.push(callback);
+    callback(this.getLeaderboard(), this.activeDate);
+
+    return () => {
+      this.subscribers = this.subscribers.filter((cb) => cb !== callback);
+    };
+  }
+
+  private static notifySubscribers(): void {
+    const current = this.getLeaderboard();
+    for (const sub of this.subscribers) {
+      try {
+        sub(current, this.activeDate);
+      } catch {}
+    }
+  }
+
   public static getUsername(): string | null {
     try {
       return localStorage.getItem(USERNAME_KEY);
@@ -26,18 +56,22 @@ export class LeaderboardManager {
     }
   }
 
-  public static isUsernameTaken(name: string): boolean {
-    const trimmed = name.trim().toLowerCase();
-    const currentName = (this.getUsername() || '').trim().toLowerCase();
-    if (currentName && trimmed === currentName) {
-      return false; // Can keep own name
-    }
+  /**
+   * Checks Cloud Firestore to see if the username (case-insensitive) is already taken today.
+   */
+  public static async isUsernameTakenToday(name: string): Promise<boolean> {
+    const trimmed = name.trim();
+    if (!trimmed) return false;
 
-    const entries = this.getRawLeaderboard();
-    return entries.some((e) => e.username.trim().toLowerCase() === trimmed);
+    // Direct check against Cloud Firestore for today's date
+    try {
+      return await CloudService.isUsernameTakenToday(trimmed);
+    } catch {
+      return false;
+    }
   }
 
-  public static validateUsername(name: string): { valid: boolean; error?: string } {
+  public static validateUsernameFormat(name: string): { valid: boolean; error?: string } {
     const trimmed = name.trim();
     if (!trimmed) {
       return { valid: false, error: 'Username cannot be empty' };
@@ -49,14 +83,11 @@ export class LeaderboardManager {
     if (!regex.test(trimmed)) {
       return { valid: false, error: 'Only letters, numbers, and underscores (_) are allowed' };
     }
-    if (this.isUsernameTaken(trimmed)) {
-      return { valid: false, error: 'Username already taken, try another' };
-    }
     return { valid: true };
   }
 
   public static setUsername(name: string): { success: boolean; error?: string } {
-    const validation = this.validateUsername(name);
+    const validation = this.validateUsernameFormat(name);
     if (!validation.valid) {
       return { success: false, error: validation.error };
     }
@@ -64,98 +95,51 @@ export class LeaderboardManager {
     const trimmed = name.trim();
     try {
       localStorage.setItem(USERNAME_KEY, trimmed);
+      this.notifySubscribers();
       return { success: true };
     } catch {
       return { success: false, error: 'Could not access storage' };
     }
   }
 
-  private static getRawLeaderboard(): LeaderboardEntry[] {
-    try {
-      const data = localStorage.getItem(LEADERBOARD_KEY);
-      if (data) {
-        const parsed = JSON.parse(data);
-        if (Array.isArray(parsed)) {
-          // Strictly purge all bot names and invalid entries
-          const realEntries: LeaderboardEntry[] = parsed.filter(
-            (e) =>
-              e &&
-              typeof e.username === 'string' &&
-              !BOT_NAMES.has(e.username.trim().toLowerCase()) &&
-              typeof e.score === 'number' &&
-              e.score > 0
-          );
-
-          // Deduplicate if needed (keep highest score per username)
-          const map = new Map<string, LeaderboardEntry>();
-          for (const entry of realEntries) {
-            const key = entry.username.trim().toLowerCase();
-            const existing = map.get(key);
-            if (!existing || entry.score > existing.score) {
-              map.set(key, entry);
-            }
-          }
-
-          const cleaned = Array.from(map.values());
-          if (cleaned.length !== parsed.length) {
-            this.saveRawLeaderboard(cleaned);
-          }
-          return cleaned;
-        }
-      }
-    } catch {}
-    return [];
-  }
-
-  private static saveRawLeaderboard(entries: LeaderboardEntry[]): void {
-    try {
-      localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(entries));
-    } catch {}
-  }
-
-  public static submitScore(score: number, zoneName: string): LeaderboardEntry[] {
-    if (score <= 0) return this.getLeaderboard();
+  /**
+   * Saves score to Cloud Firestore with today's date (Asia/Kolkata IST).
+   * If player already has a score today, only updates if the new score is higher.
+   */
+  public static submitScore(
+    score: number,
+    zoneName: string,
+    distance = 0,
+    skinId = 'default'
+  ): void {
+    if (score <= 0) return;
 
     const username = this.getUsername();
-    if (!username) return this.getLeaderboard();
+    if (!username) return;
 
-    const raw = this.getRawLeaderboard();
-    const existing = raw.find((e) => e.username.trim().toLowerCase() === username.trim().toLowerCase());
-
-    if (existing) {
-      // If player beats their old score, update their existing rank, do NOT create a duplicate entry
-      if (score > existing.score) {
-        existing.score = score;
-        existing.zone = zoneName;
-        existing.date = new Date().toISOString().split('T')[0];
-      }
-    } else {
-      raw.push({
-        username: username.trim(),
-        score,
-        zone: zoneName,
-        date: new Date().toISOString().split('T')[0],
-      });
-    }
-
-    // Real-time sorting: descending by score
-    raw.sort((a, b) => b.score - a.score);
-    this.saveRawLeaderboard(raw);
-    return this.getLeaderboard();
+    // Cloud Firestore is the single source of truth for global rankings
+    CloudService.submitScore(score, distance, zoneName, skinId, username).catch((err) => {
+      console.warn('Firestore daily score submission notice:', err);
+    });
   }
 
+  /**
+   * Returns current daily leaderboard from Cloud Firestore sorted by score descending,
+   * limited to top 20, with rank and current player indicator.
+   */
   public static getLeaderboard(): LeaderboardEntry[] {
-    const raw = this.getRawLeaderboard();
     const currentUsername = (this.getUsername() || '').trim().toLowerCase();
 
-    // Sort descending by score
-    const sorted = [...raw].sort((a, b) => b.score - a.score);
-
-    return sorted.map((entry, idx) => ({
+    // Map live Firestore documents
+    return this.liveEntries.slice(0, 20).map((entry, idx) => ({
       ...entry,
       rank: idx + 1,
       isCurrentPlayer: currentUsername ? entry.username.trim().toLowerCase() === currentUsername : false,
     }));
+  }
+
+  public static getTodayDateString(): string {
+    return this.activeDate || getTodayISTDateString();
   }
 
   public static getGamesPlayedCount(): number {
@@ -176,3 +160,6 @@ export class LeaderboardManager {
     }
   }
 }
+
+// Auto-initialize real-time Firestore synchronization
+LeaderboardManager.initCloudSync();
