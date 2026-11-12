@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Play, RotateCcw, Home, Volume2, VolumeX, ShoppingBag, HelpCircle } from 'lucide-react';
+import { Play, RotateCcw, Home, Volume2, VolumeX, ShoppingBag } from 'lucide-react';
 import { soundEngine } from '../game/audio';
 
 interface PauseModalProps {
@@ -7,7 +7,6 @@ interface PauseModalProps {
   onRestart: () => void;
   onHome: () => void;
   onOpenShop?: () => void;
-  onOpenGuide?: () => void;
   muted: boolean;
   isMobile?: boolean;
   onToggleMute: () => void;
@@ -18,7 +17,6 @@ export const PauseModal: React.FC<PauseModalProps> = ({
   onRestart,
   onHome,
   onOpenShop,
-  onOpenGuide,
   muted,
   isMobile = false,
   onToggleMute,
@@ -47,7 +45,10 @@ export const PauseModal: React.FC<PauseModalProps> = ({
 
         <div className="w-full flex flex-col gap-2 sm:gap-3">
           <button
-            onClick={() => {
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
               soundEngine.playClick();
               onResume();
             }}
@@ -58,7 +59,10 @@ export const PauseModal: React.FC<PauseModalProps> = ({
           </button>
 
           <button
-            onClick={() => {
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
               soundEngine.playClick();
               onRestart();
             }}
@@ -70,7 +74,10 @@ export const PauseModal: React.FC<PauseModalProps> = ({
 
           {onOpenShop && (
             <button
-              onClick={() => {
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 soundEngine.playClick();
                 onOpenShop();
               }}
@@ -81,21 +88,11 @@ export const PauseModal: React.FC<PauseModalProps> = ({
             </button>
           )}
 
-          {onOpenGuide && (
-            <button
-              onClick={() => {
-                soundEngine.playClick();
-                onOpenGuide();
-              }}
-              className="w-full flex items-center justify-center gap-2 py-2.5 sm:py-3 bg-sky-950/40 hover:bg-sky-900/50 text-sky-300 hover:text-white font-semibold rounded-xl sm:rounded-2xl border border-sky-500/40 transition-colors text-xs sm:text-sm cursor-pointer"
-            >
-              <HelpCircle className="w-4 h-4 text-sky-400" />
-              <span>CONTROLS & HAZARDS GUIDE</span>
-            </button>
-          )}
-
           <button
-            onClick={() => {
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
               soundEngine.playClick();
               onToggleMute();
             }}
@@ -106,7 +103,10 @@ export const PauseModal: React.FC<PauseModalProps> = ({
           </button>
 
           <button
-            onClick={() => {
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
               soundEngine.playClick();
               onHome();
             }}

@@ -39,8 +39,8 @@ export const StoryModal: React.FC<StoryModalProps> = ({ onClose }) => {
   ];
 
   return (
-    <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-2 sm:p-5 z-50 animate-fadeIn select-none">
-      <div className="mobile-modal-card w-full max-w-lg bg-slate-900/95 border border-sky-500/40 rounded-3xl shadow-[0_0_50px_rgba(56,189,248,0.25)] p-3.5 sm:p-6 flex flex-col max-h-[92vh] sm:max-h-[88vh] text-left">
+    <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 z-50 animate-fadeIn select-none">
+      <div className="w-full max-w-lg bg-slate-900/95 border border-sky-500/40 rounded-3xl shadow-[0_0_50px_rgba(56,189,248,0.25)] p-5 sm:p-6 flex flex-col max-h-[88vh] text-left">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-2.5">

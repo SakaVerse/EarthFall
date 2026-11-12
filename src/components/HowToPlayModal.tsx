@@ -9,25 +9,24 @@ interface HowToPlayModalProps {
 }
 
 export const HowToPlayModal: React.FC<HowToPlayModalProps> = ({ onClose, isMobile }) => {
-  const [activeTab, setActiveTab] = useState<'easy' | 'controls' | 'skills' | 'hazards' | 'powerups' | 'zones'>('easy');
+  const [activeTab, setActiveTab] = useState<'controls' | 'skills' | 'powerups' | 'hazards' | 'zones'>('controls');
 
   return (
-    <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 z-40 select-none animate-fadeIn overflow-y-auto">
-      <div className="mobile-modal-card w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl sm:rounded-3xl shadow-2xl p-3 sm:p-6 flex flex-col max-h-[94vh] sm:max-h-[90vh] my-auto">
+    <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 z-40 select-none animate-fadeIn">
+      <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 sm:pb-4 border-b border-slate-800">
+        <div className="flex items-center justify-between pb-4 border-b border-slate-800">
           <div>
             <div className="flex items-center gap-2 mb-0.5">
               <span className="text-[10px] font-mono uppercase text-sky-400 font-bold tracking-widest">
                 MISSION FLIGHT MANUAL
               </span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-sky-300 border border-slate-700">
-                {isMobile ? '📱 Mobile Touch Active' : '💻 Keyboard Active'}
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                {isMobile ? '📱 Mobile Controls Active' : '💻 PC Controls Active'}
               </span>
             </div>
-            <h2 className="text-xl sm:text-2xl font-display font-extrabold text-white flex items-center gap-2">
-              <span>HOW TO PLAY & SURVIVE</span>
-              <span className="text-xs sm:text-sm font-mono text-amber-300 font-normal">📖 Easy Guide</span>
+            <h2 className="text-xl sm:text-2xl font-display font-extrabold text-white">
+              HOW TO PLAY
             </h2>
           </div>
           <button
@@ -35,21 +34,20 @@ export const HowToPlayModal: React.FC<HowToPlayModalProps> = ({ onClose, isMobil
               soundEngine.playClick();
               onClose();
             }}
-            className="p-1.5 sm:p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex items-center gap-1.5 py-2.5 border-b border-slate-800 text-xs font-semibold overflow-x-auto custom-scrollbar">
+        <div className="flex items-center gap-1.5 py-3 border-b border-slate-800 text-xs font-semibold overflow-x-auto">
           {[
-            { id: 'easy', label: '⭐ Easy Guide', icon: Sparkles },
-            { id: 'controls', label: '🎮 Controls', icon: Gamepad2 },
-            { id: 'skills', label: '🛡️ Abilities', icon: Radio },
-            { id: 'hazards', label: '⚠️ Obstacles', icon: AlertTriangle },
-            { id: 'powerups', label: '⚡ Power-Ups', icon: Zap },
-            { id: 'zones', label: '🌌 5 Zones', icon: Layers },
+            { id: 'controls', label: 'Controls', icon: Gamepad2 },
+            { id: 'skills', label: 'Active Skills', icon: Sparkles },
+            { id: 'powerups', label: 'Power-Ups', icon: Zap },
+            { id: 'hazards', label: 'Hazards', icon: AlertTriangle },
+            { id: 'zones', label: '5 Space Zones', icon: Layers },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -60,10 +58,10 @@ export const HowToPlayModal: React.FC<HowToPlayModalProps> = ({ onClose, isMobil
                   soundEngine.playClick();
                   setActiveTab(tab.id as any);
                 }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all whitespace-nowrap cursor-pointer text-xs ${
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg transition-colors whitespace-nowrap ${
                   isActive
-                    ? 'bg-sky-500 text-white font-bold shadow-md ring-1 ring-sky-300'
-                    : 'bg-slate-800/70 text-slate-400 hover:text-white'
+                    ? 'bg-sky-500 text-white font-bold shadow-sm'
+                    : 'bg-slate-800/60 text-slate-400 hover:text-slate-200'
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
@@ -74,130 +72,7 @@ export const HowToPlayModal: React.FC<HowToPlayModalProps> = ({ onClose, isMobil
         </div>
 
         {/* Tab Content */}
-        <div className="py-3 sm:py-4 overflow-y-auto space-y-3.5 text-xs sm:text-sm text-slate-300 custom-scrollbar flex-1">
-          {/* EASY GUIDE: CONTROLS, ABILITIES, OBSTACLES IN SIMPLE LANGUAGE */}
-          {activeTab === 'easy' && (
-            <div className="space-y-3">
-              {/* Section 1: Controls */}
-              <div className="p-3.5 rounded-2xl bg-sky-950/40 border border-sky-500/40 shadow-sm">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="p-1 rounded-lg bg-sky-500/20 text-sky-400">
-                    <Gamepad2 className="w-4 h-4" />
-                  </span>
-                  <h3 className="font-display font-black text-white text-sm sm:text-base">
-                    1. HOW TO CONTROL EARTH (SUPER SIMPLE)
-                  </h3>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                  <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800">
-                    <span className="font-bold text-sky-300 block mb-0.5">🚀 FLY UP / JUMP</span>
-                    <p className="text-slate-300 leading-relaxed">
-                      {isMobile ? 'Tap the RIGHT half of your screen.' : 'Press SPACE, W, or Up Arrow.'}
-                      <br />
-                      <span className="text-emerald-400 font-semibold font-mono">Tip: Earth has 10 jumps. Touch the ground to instantly refill back to 10!</span>
-                    </p>
-                  </div>
-                  <div className="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800">
-                    <span className="font-bold text-amber-300 block mb-0.5">⬇️ DIVE DOWN</span>
-                    <p className="text-slate-300 leading-relaxed">
-                      {isMobile ? 'Tap the LEFT half of your screen.' : 'Press S or Down Arrow.'}
-                      <br />
-                      <span className="text-slate-400">Drops Earth fast to quickly duck under rocks and ceiling barriers.</span>
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 2: 3 Abilities */}
-              <div className="p-3.5 rounded-2xl bg-cyan-950/40 border border-cyan-500/40 shadow-sm">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="p-1 rounded-lg bg-cyan-500/20 text-cyan-400">
-                    <Sparkles className="w-4 h-4" />
-                  </span>
-                  <h3 className="font-display font-black text-white text-sm sm:text-base">
-                    2. YOUR 3 SUPER ABILITIES (PRESS WHEN IN TROUBLE)
-                  </h3>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                  <div className="bg-slate-900/90 p-2.5 rounded-xl border border-cyan-500/30">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-bold text-cyan-300">Phase Warp</span>
-                      <span className="font-mono text-[9px] bg-cyan-950 text-cyan-200 px-1.5 py-0.2 rounded border border-cyan-500/40">KEY: Q</span>
-                    </div>
-                    <p className="text-slate-300 leading-relaxed text-[11px]">
-                      Turns Earth completely ghost-like and invincible for 1.5 seconds! Pass right through impossible rocks without taking damage.
-                    </p>
-                  </div>
-
-                  <div className="bg-slate-900/90 p-2.5 rounded-xl border border-sky-500/30">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-bold text-sky-300">EMP Shockwave</span>
-                      <span className="font-mono text-[9px] bg-sky-950 text-sky-200 px-1.5 py-0.2 rounded border border-sky-500/40">KEY: E</span>
-                    </div>
-                    <p className="text-slate-300 leading-relaxed text-[11px]">
-                      A giant electric blast that destroys all nearby obstacles and turns them into +250 bonus score points!
-                    </p>
-                  </div>
-
-                  <div className="bg-slate-900/90 p-2.5 rounded-xl border border-amber-500/30">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-bold text-amber-300">Plasma Vent</span>
-                      <span className="font-mono text-[9px] bg-amber-950 text-amber-200 px-1.5 py-0.2 rounded border border-amber-500/40">KEY: F</span>
-                    </div>
-                    <p className="text-slate-300 leading-relaxed text-[11px]">
-                      Rockets Earth upward out of the danger zone while blowing incoming rocks backwards to clear a safe flight path.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 3: Obstacles */}
-              <div className="p-3.5 rounded-2xl bg-rose-950/30 border border-rose-500/40 shadow-sm">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="p-1 rounded-lg bg-rose-500/20 text-rose-400">
-                    <AlertTriangle className="w-4 h-4" />
-                  </span>
-                  <h3 className="font-display font-black text-white text-sm sm:text-base">
-                    3. OBSTACLES & DANGERS (WHAT TO DODGE)
-                  </h3>
-                </div>
-                <div className="space-y-1.5 text-xs">
-                  <div className="bg-slate-900/90 p-2 rounded-xl border border-slate-800 flex items-start gap-2">
-                    <span className="text-base shrink-0">🪨</span>
-                    <div>
-                      <span className="font-bold text-white">Asteroids & Space Rocks:</span>
-                      <span className="text-slate-300 ml-1">Float in your path. Small rocks deal 20 damage, giant rocks deal 40 damage. Dodge them or blast them with EMP!</span>
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-900/90 p-2 rounded-xl border border-slate-800 flex items-start gap-2">
-                    <span className="text-base shrink-0">🔴</span>
-                    <div>
-                      <span className="font-bold text-rose-300">Red Warning Line / Meteors:</span>
-                      <span className="text-slate-300 ml-1">When a red laser line appears on screen, a burning meteor will shoot across that lane 1 second later—move away quickly!</span>
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-900/90 p-2 rounded-xl border border-slate-800 flex items-start gap-2">
-                    <span className="text-base shrink-0">🔥</span>
-                    <div>
-                      <span className="font-bold text-amber-300">Solar Flares & Star Beams:</span>
-                      <span className="text-slate-300 ml-1">Arches of hot plasma erupting from nearby stars. Dive underneath or use Phase Warp (Q) to glide through safely.</span>
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-900/90 p-2 rounded-xl border border-slate-800 flex items-start gap-2">
-                    <span className="text-base shrink-0">⚠️</span>
-                    <div>
-                      <span className="font-bold text-emerald-300">Ground Landing Rules:</span>
-                      <span className="text-slate-300 ml-1">Touching the floor recharges your 10 jumps, but don't rest on the ground for more than 1 second or space friction damages your atmosphere!</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
+        <div className="py-4 overflow-y-auto space-y-4 text-xs sm:text-sm text-slate-300">
           {activeTab === 'controls' && (
             <div className="space-y-4">
               {/* Mobile controls section */}

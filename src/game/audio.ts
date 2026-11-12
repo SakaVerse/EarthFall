@@ -16,6 +16,8 @@ class SoundEngine {
   private currentStep = 0;
   private currentScale = [220, 261.63, 293.66, 329.63, 392.00, 440, 523.25]; // A minor pentatonic / dorian
 
+  private isPlatformMuted = false;
+
   private settings: AudioSettings = {
     masterVolume: 0.7,
     musicVolume: 0.5,
@@ -40,7 +42,8 @@ class SoundEngine {
       this.ctx = new AudioCtx();
 
       this.masterGain = this.ctx.createGain();
-      this.masterGain.gain.value = this.settings.muted ? 0 : this.settings.masterVolume;
+      const effectiveGain = (this.settings.muted || this.isPlatformMuted) ? 0 : this.settings.masterVolume;
+      this.masterGain.gain.value = effectiveGain;
       this.masterGain.connect(this.ctx.destination);
 
       this.musicGain = this.ctx.createGain();
@@ -60,11 +63,8 @@ class SoundEngine {
     if (!this.ctx) return;
 
     if (this.masterGain) {
-      this.masterGain.gain.setTargetAtTime(
-        this.settings.muted ? 0 : this.settings.masterVolume,
-        this.ctx.currentTime,
-        0.05
-      );
+      const targetGain = (this.settings.muted || this.isPlatformMuted) ? 0 : this.settings.masterVolume;
+      this.masterGain.gain.setTargetAtTime(targetGain, this.ctx.currentTime, 0.05);
     }
     if (this.musicGain) {
       this.musicGain.gain.setTargetAtTime(this.settings.musicVolume, this.ctx.currentTime, 0.05);
@@ -74,20 +74,23 @@ class SoundEngine {
     }
   }
 
+  public setPlatformMuted(muted: boolean) {
+    this.isPlatformMuted = muted;
+    if (!this.ctx || !this.masterGain) return;
+    const targetGain = (this.settings.muted || this.isPlatformMuted) ? 0 : this.settings.masterVolume;
+    this.masterGain.gain.setTargetAtTime(targetGain, this.ctx.currentTime, 0.02);
+  }
+
   public isMuted(): boolean {
-    return this.settings.muted;
+    return this.settings.muted || this.isPlatformMuted;
   }
 
   public muteAll() {
-    if (this.masterGain && this.ctx) {
-      this.masterGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.02);
-    }
+    this.setPlatformMuted(true);
   }
 
   public unmuteAll() {
-    if (this.masterGain && this.ctx && !this.settings.muted) {
-      this.masterGain.gain.setTargetAtTime(this.settings.masterVolume, this.ctx.currentTime, 0.05);
-    }
+    this.setPlatformMuted(false);
   }
 
   public startMusic(zoneTempo = 130) {

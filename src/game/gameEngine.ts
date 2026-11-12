@@ -43,8 +43,9 @@ import { renderCosmicOrb, renderObstacle, renderPowerUp } from './obstacleRender
 import { CosmeticsManager } from './cosmetics';
 import { DailyMissionsManager } from './dailyMissions';
 import { LeaderboardManager } from './leaderboard';
+import { crazyGames } from './crazyGamesSdk';
 
-const HIGH_SCORE_KEY = 'earthfall_high_scores_v3';
+const HIGH_SCORE_KEY = 'earthfall_high_scores_v2';
 
 export class GameEngine {
   public canvas: HTMLCanvasElement;
@@ -155,6 +156,11 @@ export class GameEngine {
   }
 
   public init() {
+    try {
+      if (typeof localStorage !== 'undefined' && localStorage.getItem('earthfall_high_scores')) {
+        localStorage.removeItem('earthfall_high_scores');
+      }
+    } catch (e) {}
     this.resetGame();
     this.startLoop();
   }
@@ -338,6 +344,7 @@ export class GameEngine {
     this.incrementGamesPlayed();
     this.state = 'PLAYING';
     soundEngine.startMusic(128);
+    crazyGames.gameplayStart();
     if (this.onStateChange) this.onStateChange(this.state);
   }
 
@@ -345,6 +352,7 @@ export class GameEngine {
     if (this.state === 'PLAYING') {
       this.state = 'PAUSED';
       soundEngine.stopMusic();
+      crazyGames.gameplayStop();
       if (this.onStateChange) this.onStateChange(this.state);
     }
   }
@@ -354,6 +362,7 @@ export class GameEngine {
       this.state = 'PLAYING';
       this.lastTime = performance.now();
       soundEngine.startMusic(128);
+      crazyGames.gameplayStart();
       if (this.onStateChange) this.onStateChange(this.state);
     }
   }
@@ -362,6 +371,7 @@ export class GameEngine {
     this.state = 'GAME_OVER';
     soundEngine.stopMusic();
     soundEngine.playGameOver();
+    crazyGames.gameplayStop();
     this.saveHighScore();
     LeaderboardManager.submitScore(
       this.stats.score,
@@ -697,6 +707,7 @@ export class GameEngine {
       this.zoneBannerTimer = 3.5;
       this.zoneFlashTimer = 1.0; // 1-sec white fade flash on zone transition!
       soundEngine.playZoneWarp();
+      crazyGames.happyTime();
 
       const zoneIndices: Record<ZoneId, number> = {
         solar_system: 0,

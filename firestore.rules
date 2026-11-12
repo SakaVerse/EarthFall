@@ -40,14 +40,19 @@ service cloud.firestore {
     // Validation for Player Profile: /players/{uid}
     function isValidPlayerProfile(data) {
       return data.keys().hasAll(['uid', 'nickname', 'nicknameLower']) &&
-             data.keys().hasOnly(['uid', 'nickname', 'nicknameLower', 'deviceSignature', 'bestScore', 'coins', 'scrapBalance', 'unlockedSkins', 'unlockedThemes', 'updatedAt']) &&
+             data.keys().hasOnly(['uid', 'nickname', 'nicknameLower', 'avatar', 'country', 'deviceSignature', 'bestScore', 'bestDistance', 'bestSurvivalTime', 'totalRuns', 'coins', 'scrapBalance', 'unlockedSkins', 'unlockedThemes', 'updatedAt']) &&
              data.uid is string && data.uid.size() >= 3 && data.uid.size() <= 128 &&
              data.nickname is string && data.nickname.size() >= 2 && data.nickname.size() <= 12 &&
              data.nickname.matches('^[a-zA-Z0-9]+$') &&
              data.nicknameLower is string && data.nicknameLower.size() >= 2 && data.nicknameLower.size() <= 12 &&
              data.nicknameLower.matches('^[a-z0-9]+$') &&
+             (!('avatar' in data) || (data.avatar is string && data.avatar.size() <= 32)) &&
+             (!('country' in data) || (data.country is string && data.country.size() <= 8)) &&
              (!('deviceSignature' in data) || (data.deviceSignature is string && data.deviceSignature.size() <= 256)) &&
              (!('bestScore' in data) || (data.bestScore is number && data.bestScore >= 0)) &&
+             (!('bestDistance' in data) || (data.bestDistance is number && data.bestDistance >= 0)) &&
+             (!('bestSurvivalTime' in data) || (data.bestSurvivalTime is number && data.bestSurvivalTime >= 0)) &&
+             (!('totalRuns' in data) || (data.totalRuns is number && data.totalRuns >= 0)) &&
              (!('coins' in data) || (data.coins is number && data.coins >= 0)) &&
              (!('scrapBalance' in data) || (data.scrapBalance is number && data.scrapBalance >= 0)) &&
              (!('unlockedSkins' in data) || (data.unlockedSkins is list && data.unlockedSkins.size() <= 30)) &&
@@ -58,7 +63,7 @@ service cloud.firestore {
     // Validation for Daily Score: /daily_scores/{scoreId}
     function isValidDailyScore(data) {
       return data.keys().hasAll(['uid', 'nickname', 'score', 'dateKey', 'roundDuration']) &&
-             data.keys().hasOnly(['uid', 'nickname', 'nicknameLower', 'score', 'dateKey', 'roundDuration', 'distance', 'zone', 'updatedAt']) &&
+             data.keys().hasOnly(['uid', 'nickname', 'nicknameLower', 'score', 'dateKey', 'roundDuration', 'distance', 'zone', 'avatar', 'country', 'updatedAt']) &&
              data.uid is string && data.uid.size() >= 3 && data.uid.size() <= 128 &&
              data.nickname is string && data.nickname.size() >= 2 && data.nickname.size() <= 12 &&
              data.nickname.matches('^[a-zA-Z0-9]+$') &&
@@ -68,6 +73,8 @@ service cloud.firestore {
              data.roundDuration is number && data.roundDuration >= 5 &&
              (!('distance' in data) || (data.distance is number && data.distance >= 0)) &&
              (!('zone' in data) || (data.zone is string && data.zone.size() <= 64)) &&
+             (!('avatar' in data) || (data.avatar is string && data.avatar.size() <= 32)) &&
+             (!('country' in data) || (data.country is string && data.country.size() <= 8)) &&
              (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
     }
 
@@ -87,8 +94,8 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Collection 2: Players (Auto-load Nickname on Return)
-    // Public read so returning players or leaderboard lookups can resolve nicknames.
+    // Collection 2: Players (Career Profiles & Statistics)
+    // Public read so rankings and player profiles can resolve metadata.
     match /players/{uid} {
       allow read: if true;
       allow create: if isValidId(uid) &&
@@ -102,23 +109,10 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Collection 3: Daily Scores (Real-Time Global Leaderboard)
-    // Public read for real-time top 10 rankings.
+    // Collection 3: Daily Scores (Real-Time Global Competitive Leaderboard)
+    // Public read for real-time rankings and filters.
     // Creates and updates require score > 0, score <= 1000000, roundDuration >= 5s.
     match /daily_scores/{scoreId} {
-      allow read: if true;
-      allow create: if isValidId(scoreId) &&
-                       isValidDailyScore(incoming()) &&
-                       isCaller(incoming().uid);
-      allow update: if isValidId(scoreId) &&
-                       isValidDailyScore(incoming()) &&
-                       incoming().uid == existing().uid &&
-                       incoming().score >= existing().score &&
-                       isCaller(incoming().uid);
-      allow delete: if false;
-    }
-
-    match /daily_scores_v2/{scoreId} {
       allow read: if true;
       allow create: if isValidId(scoreId) &&
                        isValidDailyScore(incoming()) &&

@@ -203,12 +203,27 @@ export interface SkinItem {
   specialRender?: SpecialRenderType;
 }
 
+export type CosmicAvatarId =
+  | 'earth'
+  | 'mars'
+  | 'europa'
+  | 'titan'
+  | 'solar'
+  | 'cyber'
+  | 'void'
+  | 'phoenix';
+
 export interface LeaderboardEntry {
   rank?: number;
   username: string;
   score: number;
   zone: string;
   date: string;
+  avatar?: string;
+  country?: string;
+  distance?: number;
+  survivalTime?: number;
+  uid?: string;
   isCurrentPlayer?: boolean;
 }
 

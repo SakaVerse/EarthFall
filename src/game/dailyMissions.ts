@@ -1,214 +1,116 @@
 import { DailyMission, DailyStreakData, DailyStreakDay } from './types';
 import { CosmeticsManager } from './cosmetics';
-import { getTodayISTDateString, getTimeUntilMidnightIST } from '../utils/date';
-import { LeaderboardManager } from './leaderboard';
-import { getDeviceSignature } from '../utils/recoveryDb';
 
-const MISSIONS_STORAGE_KEY = 'earthfall_daily_missions_v3';
-const MISSIONS_DATE_KEY = 'earthfall_missions_date_v3';
-const MISSIONS_USER_KEY = 'earthfall_missions_user_v3';
+const MISSIONS_STORAGE_KEY = 'earthfall_daily_missions';
+const MISSIONS_DATE_KEY = 'earthfall_missions_date';
 
 // Daily Streak Keys
-const STREAK_COUNT_KEY = 'earthfall_daily_streak_count_v3';
-const STREAK_LAST_DATE_KEY = 'earthfall_daily_streak_last_date_v3';
-const STREAK_CLAIMED_DATE_KEY = 'earthfall_daily_streak_claimed_date_v3';
-const STREAK_BEST_KEY = 'earthfall_daily_streak_best_v3';
+const STREAK_COUNT_KEY = 'earthfall_daily_streak_count';
+const STREAK_LAST_DATE_KEY = 'earthfall_daily_streak_last_date';
+const STREAK_CLAIMED_DATE_KEY = 'earthfall_daily_streak_claimed_date';
+const STREAK_BEST_KEY = 'earthfall_daily_streak_best';
 
-// Scaled down daily streak rewards (~60% lower, as requested by player)
-export const STREAK_REWARDS = [15, 20, 25, 30, 40, 50, 75];
+// Daily Streak rewards for 7 consecutive days (Day 7 is cosmic milestone, repeating with bonus)
+export const STREAK_REWARDS = [50, 75, 100, 135, 175, 225, 350];
 
-/**
- * Deterministic integer hash for seeding user-specific daily quests
- */
-function hashSeed(seedStr: string): number {
-  let hash = 2166136261;
-  for (let i = 0; i < seedStr.length; i++) {
-    hash ^= seedStr.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
+function getTodayString(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
-/**
- * Seeded pseudo-random generator
- */
-function seededRandom(seed: number) {
-  let s = seed;
-  return () => {
-    s = (s * 1664525 + 1013904223) % 4294967296;
-    return s / 4294967296;
-  };
+function parseDateDays(dateStr: string): number {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return Math.floor(Date.UTC(y, m - 1, d) / (1000 * 60 * 60 * 24));
 }
-
-// Master pool of distinct flight directives
-interface MissionTemplate {
-  id: string;
-  title: string;
-  description: string;
-  targetType: 'energy' | 'dodge' | 'distance' | 'skills' | 'combo';
-  targetCount: number;
-  reward: number; // Dropped prize coin rewards (20 - 40 scrap)
-}
-
-const MISSION_POOL: MissionTemplate[] = [
-  {
-    id: 'mission_energy',
-    title: 'Cosmic Harvester',
-    description: 'Collect 30 Cosmic Energy Orbs during flights.',
-    targetType: 'energy',
-    targetCount: 30,
-    reward: 25,
-  },
-  {
-    id: 'mission_dodge',
-    title: 'Hazard Evader',
-    description: 'Dodge 18 celestial obstacles and meteorites.',
-    targetType: 'dodge',
-    targetCount: 18,
-    reward: 25,
-  },
-  {
-    id: 'mission_distance',
-    title: 'Deep Space Voyager',
-    description: 'Travel a cumulative distance of 2,200 Light Years.',
-    targetType: 'distance',
-    targetCount: 2200,
-    reward: 35,
-  },
-  {
-    id: 'mission_skills',
-    title: 'Orbital Tactician',
-    description: 'Deploy planetary abilities (EMP, Warp, Vent) 4 times.',
-    targetType: 'skills',
-    targetCount: 4,
-    reward: 30,
-  },
-  {
-    id: 'mission_combo',
-    title: 'Gravitational Flow',
-    description: 'Achieve a x4 combo by dodging hazards in close succession.',
-    targetType: 'combo',
-    targetCount: 4,
-    reward: 30,
-  },
-  {
-    id: 'mission_energy_burst',
-    title: 'Stellar Collector',
-    description: 'Gather 45 Cosmic Energy Orbs across cosmic zones.',
-    targetType: 'energy',
-    targetCount: 45,
-    reward: 35,
-  },
-  {
-    id: 'mission_evasion_expert',
-    title: 'Asteroid Drifter',
-    description: 'Perform 28 clean hazard dodges in uncharted space.',
-    targetType: 'dodge',
-    targetCount: 28,
-    reward: 35,
-  },
-  {
-    id: 'mission_long_voyage',
-    title: 'Interstellar Cruiser',
-    description: 'Traverse 3,500 Light Years into the cosmic deep.',
-    targetType: 'distance',
-    targetCount: 3500,
-    reward: 40,
-  },
-  {
-    id: 'mission_skill_master',
-    title: 'Atmospheric Guardian',
-    description: 'Activate planetary defense skills 6 times in battle.',
-    targetType: 'skills',
-    targetCount: 6,
-    reward: 35,
-  },
-  {
-    id: 'mission_hyper_combo',
-    title: 'Momentum Virtuoso',
-    description: 'Reach a high-intensity x5 combo multiplier.',
-    targetType: 'combo',
-    targetCount: 5,
-    reward: 40,
-  },
-];
 
 export class DailyMissionsManager {
-  /**
-   * Generates a unique, personalized set of 4 missions for this user today (IST 12:00 AM reset)
-   */
-  private static generatePersonalizedMissions(userKey: string, todayKey: string): DailyMission[] {
-    const seed = hashSeed(`${todayKey}_${userKey}`);
-    const rand = seededRandom(seed);
-
-    // Shuffle pool copies deterministically
-    const pool = [...MISSION_POOL];
-    for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(rand() * (i + 1));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-
-    // Select first 4 distinct templates for today
-    const selected = pool.slice(0, 4);
-
-    return selected.map((tpl) => ({
-      id: `${tpl.id}_${todayKey}`,
-      title: tpl.title,
-      description: tpl.description,
-      targetType: tpl.targetType,
-      targetCount: tpl.targetCount,
-      currentCount: 0,
-      reward: tpl.reward,
-      completed: false,
-      claimed: false,
-    }));
+  private static generateDefaultMissions(): DailyMission[] {
+    return [
+      {
+        id: 'mission_energy',
+        title: 'Cosmic Harvester',
+        description: 'Collect 45 Cosmic Energy Orbs during flights.',
+        targetType: 'energy',
+        targetCount: 45,
+        currentCount: 0,
+        reward: 80,
+        completed: false,
+        claimed: false,
+      },
+      {
+        id: 'mission_dodge',
+        title: 'Hazard Evader',
+        description: 'Successfully dodge 20 celestial obstacles and meteorites.',
+        targetType: 'dodge',
+        targetCount: 20,
+        currentCount: 0,
+        reward: 90,
+        completed: false,
+        claimed: false,
+      },
+      {
+        id: 'mission_distance',
+        title: 'Deep Space Voyager',
+        description: 'Travel a cumulative distance of 3,500 Light Years.',
+        targetType: 'distance',
+        targetCount: 3500,
+        currentCount: 0,
+        reward: 110,
+        completed: false,
+        claimed: false,
+      },
+      {
+        id: 'mission_skills',
+        title: 'Orbital Tactician',
+        description: 'Deploy planetary skills (EMP, Warp, Vent) 4 times.',
+        targetType: 'skills',
+        targetCount: 4,
+        currentCount: 0,
+        reward: 75,
+        completed: false,
+        claimed: false,
+      },
+      {
+        id: 'mission_combo',
+        title: 'Gravitational Flow',
+        description: 'Achieve a x5 combo by dodging hazards in close succession.',
+        targetType: 'combo',
+        targetCount: 5,
+        currentCount: 0,
+        reward: 100,
+        completed: false,
+        claimed: false,
+      },
+    ];
   }
 
-  private static getCurrentUserIdentifier(): string {
-    const username = LeaderboardManager.getUsername();
-    if (username && username.trim()) {
-      return username.trim().toLowerCase();
-    }
-    return getDeviceSignature() || 'pilot_cadet';
-  }
-
-  /**
-   * Returns current active missions.
-   * Resets strictly at 12:00 AM IST (Asia/Kolkata), and generates different missions
-   * for different pilots based on their user callsign / device signature!
-   */
   public static getMissions(): DailyMission[] {
-    const today = getTodayISTDateString();
-    const currentUser = this.getCurrentUserIdentifier();
-
+    const today = getTodayString();
     try {
       const storedDate = localStorage.getItem(MISSIONS_DATE_KEY);
-      const storedUser = localStorage.getItem(MISSIONS_USER_KEY);
       const storedData = localStorage.getItem(MISSIONS_STORAGE_KEY);
 
-      // If same date (IST 12:00 AM) and same user, load saved progress
-      if (storedDate === today && storedUser === currentUser && storedData) {
+      if (storedDate === today && storedData) {
         const parsed: DailyMission[] = JSON.parse(storedData);
         if (Array.isArray(parsed) && parsed.length > 0) {
           return parsed;
         }
       }
 
-      // Generate fresh, distinct missions for this user on this IST calendar day
-      const freshMissions = this.generatePersonalizedMissions(currentUser, today);
+      // Reset for today
+      const freshMissions = this.generateDefaultMissions();
       localStorage.setItem(MISSIONS_DATE_KEY, today);
-      localStorage.setItem(MISSIONS_USER_KEY, currentUser);
       localStorage.setItem(MISSIONS_STORAGE_KEY, JSON.stringify(freshMissions));
       return freshMissions;
-    } catch {
-      return this.generatePersonalizedMissions(currentUser, today);
+    } catch (e) {
+      return this.generateDefaultMissions();
     }
   }
 
   public static saveMissions(missions: DailyMission[]) {
     try {
       localStorage.setItem(MISSIONS_STORAGE_KEY, JSON.stringify(missions));
-    } catch {}
+    } catch (e) {}
   }
 
   public static recordProgress(
@@ -257,26 +159,29 @@ export class DailyMissionsManager {
 
   // ==================== DAILY STREAK RETENTION SYSTEM ====================
 
+  /**
+   * Evaluates and updates the daily streak based on calendar days.
+   * Consecutive days increment the streak; missed days reset streak to 1.
+   */
   public static checkAndRecordStreak(): number {
-    const today = getTodayISTDateString();
+    const today = getTodayString();
     try {
       const lastActiveDate = localStorage.getItem(STREAK_LAST_DATE_KEY);
       let streak = parseInt(localStorage.getItem(STREAK_COUNT_KEY) || '0', 10);
       let bestStreak = parseInt(localStorage.getItem(STREAK_BEST_KEY) || '0', 10);
 
       if (!lastActiveDate) {
+        // First recorded visit
         streak = 1;
         localStorage.setItem(STREAK_COUNT_KEY, '1');
         localStorage.setItem(STREAK_LAST_DATE_KEY, today);
       } else if (lastActiveDate !== today) {
-        // Compare dates in days
-        const lastDays = Math.floor(new Date(lastActiveDate).getTime() / (86400000));
-        const todayDays = Math.floor(new Date(today).getTime() / (86400000));
-        const diff = todayDays - lastDays;
-
+        const diff = parseDateDays(today) - parseDateDays(lastActiveDate);
         if (diff === 1) {
+          // Exactly consecutive day!
           streak += 1;
         } else if (diff > 1) {
+          // Missed at least one day, reset to 1
           streak = 1;
         }
         localStorage.setItem(STREAK_COUNT_KEY, streak.toString());
@@ -291,9 +196,12 @@ export class DailyMissionsManager {
     }
   }
 
+  /**
+   * Retrieves full details about the current streak, rewards, and 7-day progression roadmap.
+   */
   public static getStreakData(): DailyStreakData {
     this.checkAndRecordStreak();
-    const today = getTodayISTDateString();
+    const today = getTodayString();
 
     let currentStreak = 1;
     let bestStreak = 1;
@@ -306,6 +214,7 @@ export class DailyMissionsManager {
       claimedToday = lastClaimed === today;
     } catch {}
 
+    // Cycle day inside 1-7 bracket (e.g. Day 1, Day 2 ... Day 7, Day 8 is cycle 2 Day 1, etc.)
     const cycleDay = ((currentStreak - 1) % 7) + 1;
     const todayReward = STREAK_REWARDS[cycleDay - 1];
 
@@ -334,8 +243,11 @@ export class DailyMissionsManager {
     };
   }
 
+  /**
+   * Claims today's daily streak scrap reward and deposits it to player balance.
+   */
   public static claimStreakReward(): { success: boolean; reward: number; newStreak: number } {
-    const today = getTodayISTDateString();
+    const today = getTodayString();
     const streakData = this.getStreakData();
 
     if (streakData.claimedToday || !streakData.canClaim) {
@@ -364,9 +276,5 @@ export class DailyMissionsManager {
     const missionUnclaimed = missions.filter((m) => m.completed && !m.claimed).length;
     const streakUnclaimed = this.getStreakData().canClaim ? 1 : 0;
     return missionUnclaimed + streakUnclaimed;
-  }
-
-  public static getTimeUntilReset(): string {
-    return getTimeUntilMidnightIST().formatted;
   }
 }

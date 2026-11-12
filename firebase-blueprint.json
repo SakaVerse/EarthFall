@@ -14,23 +14,30 @@
     },
     "PlayerProfile": {
       "title": "Player Profile",
-      "description": "Player record linking UID to active nickname, device signature, and progress in Firestore",
+      "description": "Player record linking UID to active nickname, avatar, country, device signature, and career statistics in Firestore",
       "type": "object",
       "properties": {
         "uid": { "type": "string", "maxLength": 128 },
         "nickname": { "type": "string", "maxLength": 12, "minLength": 2, "pattern": "^[a-zA-Z0-9]+$" },
         "nicknameLower": { "type": "string", "maxLength": 12, "minLength": 2, "pattern": "^[a-zA-Z0-9]+$" },
+        "avatar": { "type": "string", "maxLength": 32 },
+        "country": { "type": "string", "maxLength": 8 },
         "deviceSignature": { "type": "string", "maxLength": 256 },
         "bestScore": { "type": "number" },
+        "bestDistance": { "type": "number" },
+        "bestSurvivalTime": { "type": "number" },
+        "totalRuns": { "type": "number" },
         "coins": { "type": "number" },
         "scrapBalance": { "type": "number" },
+        "unlockedSkins": { "type": "array" },
+        "unlockedThemes": { "type": "array" },
         "updatedAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["uid", "nickname", "nicknameLower"]
     },
     "DailyScore": {
       "title": "Daily Leaderboard Score",
-      "description": "Anti-bot validated score entry for today's daily leaderboard in IST",
+      "description": "Anti-bot validated score entry for competitive leaderboard with podium, country and avatar",
       "type": "object",
       "properties": {
         "uid": { "type": "string", "maxLength": 128 },
@@ -41,6 +48,8 @@
         "roundDuration": { "type": "number" },
         "distance": { "type": "number" },
         "zone": { "type": "string", "maxLength": 64 },
+        "avatar": { "type": "string", "maxLength": 32 },
+        "country": { "type": "string", "maxLength": 8 },
         "updatedAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["uid", "nickname", "score", "dateKey", "roundDuration"]
@@ -53,11 +62,11 @@
     },
     "/players/{uid}": {
       "schema": "PlayerProfile",
-      "description": "Player profile storing registered nickname, device signature, and progress in Firestore"
+      "description": "Player profile storing registered nickname, avatar, statistics, and career progress"
     },
     "/daily_scores/{scoreId}": {
       "schema": "DailyScore",
-      "description": "Daily global score entries with dateKey reset and real-play validation"
+      "description": "Daily global score entries with dateKey reset, country, avatar, and anti-bot validation"
     }
   }
 }

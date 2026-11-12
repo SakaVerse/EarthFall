@@ -167,8 +167,8 @@ export const SkinShopModal: React.FC<SkinShopModalProps> = ({ onClose, onSkinEqu
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-2 sm:p-5 z-40 select-none animate-fadeIn overflow-y-auto">
-      <div className="mobile-modal-card w-full max-w-4xl bg-slate-900/95 border border-slate-800 rounded-3xl shadow-[0_0_50px_rgba(56,189,248,0.25)] p-3 sm:p-6 flex flex-col max-h-[94vh] sm:max-h-[92vh] my-auto">
+    <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 z-40 select-none animate-fadeIn overflow-y-auto">
+      <div className="w-full max-w-4xl bg-slate-900/95 border border-slate-800 rounded-3xl shadow-[0_0_50px_rgba(56,189,248,0.25)] p-4 sm:p-6 flex flex-col max-h-[92vh] my-auto">
         {/* Header */}
         <div className="flex items-center justify-between pb-3.5 border-b border-slate-800 shrink-0">
           <div>

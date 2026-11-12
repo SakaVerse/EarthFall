@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { X, CheckCircle2, Award, Zap, Compass, ShieldAlert, Sparkles, Flame, Clock } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, CheckCircle2, Award, Zap, Compass, ShieldAlert, Sparkles, Flame } from 'lucide-react';
 import { DailyMission } from '../game/types';
 import { DailyMissionsManager } from '../game/dailyMissions';
 import { soundEngine } from '../game/audio';
-import { getTimeUntilMidnightIST } from '../utils/date';
 
 interface DailyMissionsModalProps {
   onClose: () => void;
@@ -13,14 +12,6 @@ interface DailyMissionsModalProps {
 export const DailyMissionsModal: React.FC<DailyMissionsModalProps> = ({ onClose, onClaimReward }) => {
   const [missions, setMissions] = useState<DailyMission[]>(() => DailyMissionsManager.getMissions());
   const [streakData, setStreakData] = useState(() => DailyMissionsManager.getStreakData());
-  const [countdown, setCountdown] = useState<string>(() => getTimeUntilMidnightIST().formatted);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCountdown(getTimeUntilMidnightIST().formatted);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   const handleClaim = (missionId: string) => {
     soundEngine.playRewardClaim();
@@ -60,8 +51,8 @@ export const DailyMissionsModal: React.FC<DailyMissionsModalProps> = ({ onClose,
   const completedCount = missions.filter((m) => m.completed).length;
 
   return (
-    <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 pt-[max(0.4rem,env(safe-area-inset-top))] pb-[max(0.4rem,env(safe-area-inset-bottom))] pl-[max(0.4rem,env(safe-area-inset-left))] pr-[max(0.4rem,env(safe-area-inset-right))] z-40 select-none animate-fadeIn overflow-y-auto">
-      <div className="mobile-modal-card w-full max-w-xl max-h-[92vh] sm:max-h-[88vh] overflow-y-auto bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl p-3 sm:p-6 flex flex-col my-auto custom-scrollbar">
+    <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.5rem,env(safe-area-inset-bottom))] pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] z-40 select-none animate-fadeIn overflow-y-auto">
+      <div className="w-full max-w-xl max-h-[92vh] overflow-y-auto bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl p-4 sm:p-6 flex flex-col my-auto custom-scrollbar">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 sm:pb-4 border-b border-slate-800">
           <div>
@@ -174,18 +165,12 @@ export const DailyMissionsModal: React.FC<DailyMissionsModalProps> = ({ onClose,
 
         {/* Missions List Header */}
         <div className="mt-4 mb-2 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-mono font-bold text-slate-300 uppercase tracking-wider">
-              PILOT DIRECTIVES
-            </span>
-            <span className="text-[9px] font-mono text-cyan-400 bg-cyan-950/60 border border-cyan-500/30 px-1.5 py-0.2 rounded">
-              PERSONALIZED
-            </span>
-          </div>
-          <div className="flex items-center gap-1.5 text-[10px] font-mono text-sky-400">
-            <Clock className="w-3 h-3 text-sky-400" />
-            <span>Resets in: {countdown} (12:00 AM IST)</span>
-          </div>
+          <span className="text-xs font-mono font-bold text-slate-300 uppercase tracking-wider">
+            FLIGHT MISSIONS
+          </span>
+          <span className="text-[10px] font-mono text-slate-500">
+            Resets daily at 00:00 UTC
+          </span>
         </div>
 
         {/* Missions List */}
@@ -273,15 +258,13 @@ export const DailyMissionsModal: React.FC<DailyMissionsModalProps> = ({ onClose,
 
         {/* Footer */}
         <div className="pt-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
-          <span className="font-mono text-[11px] text-slate-400">
-            Resets at 12:00 AM IST • New distinct quests generated daily
-          </span>
+          <span className="font-mono text-[11px]">Resets daily at 00:00 UTC</span>
           <button
             onClick={() => {
               soundEngine.playClick();
               onClose();
             }}
-            className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors cursor-pointer"
+            className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors"
           >
             CLOSE
           </button>

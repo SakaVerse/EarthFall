@@ -1,310 +1,504 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Trophy, Medal, Crown, Cloud, Clock, Sparkles, User, ShieldCheck } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  X,
+  Trophy,
+  Medal,
+  Crown,
+  Cloud,
+  Clock,
+  RefreshCw,
+  Globe,
+  Flag,
+  User,
+  Sparkles,
+  Shield,
+  Zap,
+  Check,
+} from 'lucide-react';
 import { LeaderboardManager } from '../game/leaderboard';
 import { soundEngine } from '../game/audio';
 import { LeaderboardEntry } from '../game/types';
-import { getTimeUntilMidnightIST } from '../utils/date';
+import {
+  COSMIC_AVATARS,
+  getCountryFlag,
+  CloudService,
+  PlayerProfileData,
+} from '../firebase/cloudService';
 
 interface LeaderboardModalProps {
   onClose: () => void;
 }
 
+type TabFilter = 'global' | 'country' | 'alltime' | 'weekly';
+
 export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({ onClose }) => {
+  const [activeTab, setActiveTab] = useState<TabFilter>('global');
   const [entries, setEntries] = useState<LeaderboardEntry[]>(() => LeaderboardManager.getLeaderboard());
   const [activeDate, setActiveDate] = useState<string>(() => LeaderboardManager.getTodayDateString());
-  const [countdown, setCountdown] = useState<string>(() => getTimeUntilMidnightIST().formatted);
-  const currentUsername = LeaderboardManager.getUsername();
-  const listRef = useRef<HTMLDivElement>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [selectedProfile, setSelectedProfile] = useState<LeaderboardEntry | null>(null);
+  const [detailedProfileData, setDetailedProfileData] = useState<PlayerProfileData | null>(null);
+  const [showAvatarPicker, setShowAvatarPicker] = useState<boolean>(false);
+  const [currentAvatar, setCurrentAvatar] = useState<string>(() => LeaderboardManager.getSelectedAvatar());
 
-  // Mount real-time subscription directly via LeaderboardManager
+  const currentUsername = LeaderboardManager.getUsername();
+  const playerCountry = LeaderboardManager.getPlayerCountry();
+
+  // Load entries on tab change
+  const loadTabEntries = useCallback(async (tab: TabFilter) => {
+    soundEngine.playClick();
+    setActiveTab(tab);
+    if (tab === 'global') {
+      setEntries(LeaderboardManager.getLeaderboard());
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const list = await LeaderboardManager.fetchFilterLeaderboard(tab);
+      setEntries(list);
+    } catch (e) {
+      console.warn('Failed to fetch filtered leaderboard:', e);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Listen to live global daily scores
   useEffect(() => {
+    if (activeTab !== 'global') return;
+
     return LeaderboardManager.subscribe((liveEntries, dateKey) => {
       setEntries(liveEntries);
       setActiveDate(dateKey);
-      // Ensure scroll position is reset to top so Rank #1 is fully visible
-      if (listRef.current) {
-        listRef.current.scrollTop = 0;
-      }
     });
-  }, []);
+  }, [activeTab]);
 
-  // Update 12:00 AM IST countdown every second
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCountdown(getTimeUntilMidnightIST().formatted);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
+  const handleRefresh = async () => {
+    soundEngine.playClick();
+    setIsLoading(true);
+    try {
+      if (activeTab === 'global') {
+        const nick = await LeaderboardManager.refreshNicknameFromCloud();
+        if (nick) setEntries(LeaderboardManager.getLeaderboard());
+      } else {
+        const list = await LeaderboardManager.fetchFilterLeaderboard(activeTab);
+        setEntries(list);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-  const currentPlayerEntry = entries.find((e) => e.isCurrentPlayer);
-  const top1Entry = entries.length > 0 && entries[0].rank === 1 ? entries[0] : null;
-  const remainingEntries = entries.length > 0 && entries[0].rank === 1 ? entries.slice(1) : entries;
+  const handleSelectAvatar = (avatarId: string) => {
+    soundEngine.playClick();
+    setCurrentAvatar(avatarId);
+    LeaderboardManager.setSelectedAvatar(avatarId);
+    setShowAvatarPicker(false);
+  };
+
+  const handleOpenProfile = async (entry: LeaderboardEntry) => {
+    soundEngine.playClick();
+    setSelectedProfile(entry);
+    if (entry.uid) {
+      const p = await CloudService.loadPlayerProfile(entry.uid);
+      setDetailedProfileData(p);
+    } else {
+      setDetailedProfileData(null);
+    }
+  };
+
+  // Top 3 Podium
+  const top1 = entries[0];
+  const top2 = entries[1];
+  const top3 = entries[2];
+  const remainingEntries = entries.slice(3);
 
   return (
-    <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-2 sm:p-5 z-50 animate-fadeIn select-none overflow-hidden">
-      <div className="mobile-modal-card w-full max-w-lg bg-slate-900/95 border border-sky-500/30 rounded-3xl shadow-[0_0_60px_rgba(56,189,248,0.25)] p-3 sm:p-5 flex flex-col max-h-[92vh] sm:max-h-[88vh] my-auto overflow-hidden">
+    <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-2.5 sm:p-5 z-50 animate-fadeIn select-none">
+      <div className="w-full max-w-2xl bg-slate-900/95 border border-slate-800 rounded-3xl shadow-[0_0_60px_rgba(56,189,248,0.25)] p-4 sm:p-6 flex flex-col max-h-[92vh]">
         
         {/* Header */}
-        <div className="mobile-modal-header flex items-center justify-between pb-2.5 sm:pb-3.5 border-b border-slate-800 shrink-0">
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="p-1.5 sm:p-2.5 rounded-xl sm:rounded-2xl bg-amber-500/15 border border-amber-500/40 text-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.25)]">
-              <Trophy className="w-4 h-4 sm:w-6 sm:h-6" />
+        <div className="flex items-center justify-between pb-3.5 border-b border-slate-800 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2.5 rounded-2xl bg-gradient-to-br from-amber-500/20 to-orange-500/20 border border-amber-500/40 text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.25)]">
+              <Trophy className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
             <div>
-              <div className="flex items-center gap-1.5 sm:gap-2">
-                <h3 className="mobile-modal-title text-sm sm:text-lg font-display font-black text-white tracking-wide">
-                  TODAY'S TOP 10 PILOTS
+              <div className="flex items-center gap-2">
+                <h3 className="text-base sm:text-xl font-display font-black text-white tracking-wide">
+                  COSMIC LEADERBOARD
                 </h3>
-                <span className="flex items-center gap-1 text-[8px] sm:text-[9px] font-mono font-bold text-emerald-400 bg-emerald-950/80 border border-emerald-500/40 px-1.5 py-0.2 sm:px-2 sm:py-0.5 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.3)]">
-                  <Cloud className="w-2 h-2 sm:w-2.5 sm:h-2.5 animate-pulse" />
-                  REAL-TIME
+                <span className="flex items-center gap-1 text-[9px] font-mono font-bold text-emerald-400 bg-emerald-950/70 border border-emerald-500/40 px-2 py-0.5 rounded-full">
+                  <Cloud className="w-2.5 h-2.5 animate-pulse" />
+                  LIVE
                 </span>
               </div>
-              <div className="flex items-center gap-1 text-[9.5px] sm:text-[11px] font-mono text-sky-300 mt-0.5">
-                <Clock className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-sky-400 shrink-0" />
-                <span className="text-slate-300">Resets at 12:00 AM IST:</span>
-                <span className="font-bold text-amber-300 bg-amber-950/50 px-1 sm:px-1.5 py-0.2 rounded border border-amber-500/30">
-                  {countdown}
-                </span>
+              <div className="flex items-center gap-2 text-[10px] sm:text-[11px] font-mono text-sky-300/90 mt-0.5">
+                <Clock className="w-3 h-3 text-sky-400" />
+                <span>Resets daily at 12:00 AM IST</span>
+                <span className="text-slate-500">({activeDate})</span>
               </div>
             </div>
           </div>
 
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleRefresh}
+              title="Refresh ranks"
+              disabled={isLoading}
+              className="p-2 rounded-2xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-sky-400' : ''}`} />
+            </button>
+            <button
+              onClick={() => {
+                soundEngine.playClick();
+                onClose();
+              }}
+              className="p-2 rounded-2xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Filter Navigation Tabs */}
+        <div className="mt-3 grid grid-cols-4 gap-1.5 p-1 bg-slate-950/80 border border-slate-800/90 rounded-2xl shrink-0 text-xs font-mono font-bold">
           <button
-            onClick={() => {
-              soundEngine.playClick();
-              onClose();
-            }}
-            className="p-1.5 sm:p-2 rounded-xl sm:rounded-2xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer shrink-0"
-            title="Close Leaderboard"
+            onClick={() => loadTabEntries('global')}
+            className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl transition-all cursor-pointer ${
+              activeTab === 'global'
+                ? 'bg-sky-500 text-white shadow-[0_0_15px_rgba(56,189,248,0.4)]'
+                : 'text-slate-400 hover:text-white hover:bg-slate-900/60'
+            }`}
           >
-            <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <Globe className="w-3.5 h-3.5" />
+            <span className="truncate">GLOBAL</span>
+          </button>
+
+          <button
+            onClick={() => loadTabEntries('country')}
+            className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl transition-all cursor-pointer ${
+              activeTab === 'country'
+                ? 'bg-sky-500 text-white shadow-[0_0_15px_rgba(56,189,248,0.4)]'
+                : 'text-slate-400 hover:text-white hover:bg-slate-900/60'
+            }`}
+          >
+            <span>{getCountryFlag(playerCountry)}</span>
+            <span className="truncate">{playerCountry}</span>
+          </button>
+
+          <button
+            onClick={() => loadTabEntries('weekly')}
+            className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl transition-all cursor-pointer ${
+              activeTab === 'weekly'
+                ? 'bg-sky-500 text-white shadow-[0_0_15px_rgba(56,189,248,0.4)]'
+                : 'text-slate-400 hover:text-white hover:bg-slate-900/60'
+            }`}
+          >
+            <Zap className="w-3.5 h-3.5 text-amber-300" />
+            <span className="truncate">WEEKLY</span>
+          </button>
+
+          <button
+            onClick={() => loadTabEntries('alltime')}
+            className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl transition-all cursor-pointer ${
+              activeTab === 'alltime'
+                ? 'bg-sky-500 text-white shadow-[0_0_15px_rgba(56,189,248,0.4)]'
+                : 'text-slate-400 hover:text-white hover:bg-slate-900/60'
+            }`}
+          >
+            <Crown className="w-3.5 h-3.5 text-amber-400" />
+            <span className="truncate">ALL-TIME</span>
           </button>
         </div>
 
-        {/* Callsign & Daily Status Banner */}
-        <div className="mt-2 sm:mt-2.5 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl sm:rounded-2xl bg-slate-950/80 border border-sky-500/30 flex items-center justify-between text-xs font-mono shrink-0">
-          <div className="flex items-center gap-1.5 sm:gap-2 truncate">
-            <User className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-sky-400 shrink-0" />
-            <span className="text-slate-400 text-[10px] sm:text-[11px]">PILOT:</span>
-            <span className="font-black text-sky-300 truncate text-[11px] sm:text-xs">
-              {currentUsername || 'Anonymous Cadet'}
-            </span>
+        {/* Current Player Bar */}
+        {currentUsername && (
+          <div className="mt-2.5 px-3 py-1.5 rounded-2xl bg-sky-950/50 border border-sky-500/40 flex items-center justify-between text-xs font-mono shrink-0">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-slate-400 uppercase">YOUR PILOT:</span>
+              <button
+                onClick={() => {
+                  soundEngine.playClick();
+                  setShowAvatarPicker(!showAvatarPicker);
+                }}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-slate-900 border border-sky-400/30 hover:border-sky-400 transition-colors cursor-pointer"
+                title="Change Avatar"
+              >
+                <span>{COSMIC_AVATARS[currentAvatar]?.icon || '🌍'}</span>
+                <span className="font-bold text-sky-200">{currentUsername}</span>
+                <span className="text-xs">{getCountryFlag(playerCountry)}</span>
+              </button>
+            </div>
+            <button
+              onClick={() => {
+                soundEngine.playClick();
+                setShowAvatarPicker(!showAvatarPicker);
+              }}
+              className="text-[10px] text-sky-400 hover:text-sky-300 underline cursor-pointer"
+            >
+              {showAvatarPicker ? 'Hide Avatars' : 'Customize Avatar'}
+            </button>
           </div>
-          <div className="flex items-center gap-1 text-[9px] sm:text-[10px] text-amber-400 bg-amber-950/60 px-1.5 py-0.5 rounded-lg border border-amber-500/30 shrink-0">
-            <ShieldCheck className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-amber-400" />
-            <span>DAILY CYCLE</span>
+        )}
+
+        {/* Avatar Selection Drawer */}
+        {showAvatarPicker && (
+          <div className="mt-2 p-2.5 bg-slate-950/90 border border-sky-500/30 rounded-2xl shrink-0 grid grid-cols-4 sm:grid-cols-8 gap-2 animate-fadeIn">
+            {Object.values(COSMIC_AVATARS).map((av) => (
+              <button
+                key={av.id}
+                onClick={() => handleSelectAvatar(av.id)}
+                className={`flex flex-col items-center justify-center p-1.5 rounded-xl border transition-all cursor-pointer ${
+                  currentAvatar === av.id
+                    ? 'bg-sky-500/30 border-sky-400 ring-2 ring-sky-400'
+                    : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+                }`}
+              >
+                <span className="text-lg">{av.icon}</span>
+                <span className="text-[9px] font-mono text-slate-300 truncate w-full text-center mt-0.5">
+                  {av.name.split(' ')[0]}
+                </span>
+              </button>
+            ))}
           </div>
-        </div>
+        )}
 
-        {/* Notice Bar */}
-        <div className="mt-1.5 px-2.5 py-1 rounded-lg sm:rounded-xl bg-sky-950/40 border border-sky-500/20 text-[9px] sm:text-[10px] font-mono text-sky-200/90 shrink-0 flex items-center justify-between">
-          <span>⚡ Real-time play active • Standings lock at 12:00 AM IST</span>
-          <span className="text-slate-400">{activeDate}</span>
-        </div>
-
-        {/* Scrollable Leaderboard Area: Dedicated Champion Card for #1 + List for #2-#10 */}
-        <div
-          ref={listRef}
-          className="mt-2 overflow-y-auto space-y-2 px-1 pt-1 pb-2 custom-scrollbar flex-1 min-h-0 mobile-modal-list"
-        >
+        {/* Content Area: Podium + Scrollable List or Empty State */}
+        <div className="mt-3 flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
           {entries.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
-              <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mb-2 shadow-[0_0_25px_rgba(245,158,11,0.25)]">
-                <Trophy className="w-6 h-6 text-amber-400" />
+            <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+              <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mb-3 shadow-[0_0_25px_rgba(245,158,11,0.2)]">
+                <Trophy className="w-7 h-7 text-amber-400" />
               </div>
-              <h4 className="text-sm sm:text-base font-display font-black text-white tracking-wide mb-1">
-                New Daily Cycle Begins!
+              <h4 className="text-base sm:text-lg font-display font-black text-white tracking-wide mb-1">
+                No scores yet—be the first!
               </h4>
-              <p className="text-[11px] font-mono text-slate-300 max-w-xs mb-2">
-                All past scores reset to 0. Fly a run to claim Rank #1 for today!
+              <p className="text-xs font-mono text-slate-400 max-w-sm">
+                Launch Earth into deep space, dodge cosmic hazards, and claim Rank #1 on the leaderboard.
               </p>
-              <div className="text-[9px] font-mono text-amber-300 bg-amber-950/50 border border-amber-500/30 px-2.5 py-0.5 rounded-full">
-                100% Real Players • No Bots
-              </div>
             </div>
           ) : (
             <>
-              {/* TOP-RANKED PLAYER (#1): ICONIC GOLDEN CHAMPION SHOWCASE CARD */}
-              {top1Entry && (
-                <div
-                  key={`${top1Entry.username}_1`}
-                  className={`p-3 sm:p-4 rounded-2xl border-2 transition-all relative overflow-hidden ${
-                    top1Entry.isCurrentPlayer
-                      ? 'bg-gradient-to-r from-amber-500/25 via-sky-950/60 to-slate-900 border-amber-400 shadow-[0_0_35px_rgba(245,158,11,0.45)] ring-2 ring-cyan-400/60'
-                      : 'bg-gradient-to-r from-amber-500/20 via-yellow-950/40 to-slate-900/95 border-amber-400 shadow-[0_0_30px_rgba(245,158,11,0.35)] ring-1 ring-amber-300/40'
-                  }`}
-                >
-                  {/* Subtle cosmic golden glow in background */}
-                  <div className="absolute -right-6 -top-6 w-24 h-24 rounded-full bg-amber-400/15 blur-xl pointer-events-none" />
-
-                  <div className="flex items-center justify-between gap-2.5">
-                    {/* Golden Crown Medallion & Player Identity */}
-                    <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
-                      <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-br from-amber-300 via-amber-400 to-amber-600 text-slate-950 flex items-center justify-center font-black shadow-[0_0_20px_rgba(245,158,11,0.7)] shrink-0 border border-amber-200">
-                        <Crown className="w-5 h-5 sm:w-6 sm:h-6 fill-slate-950 text-slate-950 animate-pulse" />
+              {/* TOP 3 PODIUM */}
+              <div className="grid grid-cols-3 gap-2 pt-3 pb-2 px-1">
+                {/* 2nd Place */}
+                <div className="flex flex-col items-center justify-end">
+                  {top2 ? (
+                    <button
+                      onClick={() => handleOpenProfile(top2)}
+                      className="w-full flex flex-col items-center p-2 rounded-2xl bg-slate-900/80 border border-slate-700/60 hover:border-slate-500 transition-all cursor-pointer group"
+                    >
+                      <span className="text-xl mb-1">{COSMIC_AVATARS[top2.avatar || 'earth']?.icon || '🌍'}</span>
+                      <div className="w-5 h-5 rounded-full bg-slate-300/20 text-slate-300 flex items-center justify-center text-[10px] font-mono font-black mb-1">
+                        #2
                       </div>
-
-                      <div className="flex flex-col min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-mono font-black text-white text-xs sm:text-base tracking-wide truncate">
-                            {top1Entry.username}
-                          </span>
-
-                          <span className="flex items-center gap-1 text-[8px] sm:text-[9px] font-mono font-black uppercase bg-amber-400 text-slate-950 px-1.5 py-0.2 sm:px-2 sm:py-0.5 rounded-full shadow-[0_0_10px_rgba(251,191,36,0.5)] shrink-0">
-                            <Sparkles className="w-2.5 h-2.5" />
-                            CHAMPION
-                          </span>
-
-                          {top1Entry.isCurrentPlayer && (
-                            <span className="text-[8px] sm:text-[9px] font-mono font-black bg-cyan-500/30 text-cyan-200 px-1.5 py-0.2 rounded border border-cyan-400/60 shadow-[0_0_8px_rgba(6,182,212,0.4)] shrink-0">
-                              YOU
-                            </span>
-                          )}
-                        </div>
-
-                        <span className="text-[9.5px] sm:text-xs font-mono text-amber-300/90 truncate mt-0.5 font-semibold">
-                          {top1Entry.zone}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Score */}
-                    <div className="flex flex-col items-end pl-2 shrink-0">
-                      <span className="font-mono-numbers font-black text-base sm:text-2xl text-amber-300 drop-shadow-[0_0_14px_rgba(245,158,11,0.8)] tracking-tight">
-                        {top1Entry.score.toLocaleString()}
+                      <span className="font-mono font-bold text-slate-200 text-xs truncate max-w-full">
+                        {top2.username}
                       </span>
-                      <span className="text-[8.5px] sm:text-[9px] font-mono text-amber-400 font-bold uppercase tracking-wider">
-                        POINTS
+                      <span className="font-mono-numbers font-black text-xs sm:text-sm text-slate-300">
+                        {top2.score.toLocaleString()}
                       </span>
+                    </button>
+                  ) : (
+                    <div className="w-full h-24 rounded-2xl border border-dashed border-slate-800/60 flex items-center justify-center text-[10px] font-mono text-slate-600">
+                      Empty
                     </div>
+                  )}
+                  <div className="w-full h-12 bg-gradient-to-t from-slate-800/80 to-slate-800/30 rounded-b-xl mt-1 border-t border-slate-700/50 flex items-center justify-center text-[11px] font-mono font-black text-slate-400">
+                    2ND
                   </div>
                 </div>
-              )}
 
-              {/* RANKS #2 TO #10 */}
-              {remainingEntries.map((entry) => {
-                const isTop2 = entry.rank === 2;
-                const isTop3 = entry.rank === 3;
+                {/* 1st Place (Center / Tallest) */}
+                <div className="flex flex-col items-center justify-end -mt-3">
+                  {top1 ? (
+                    <button
+                      onClick={() => handleOpenProfile(top1)}
+                      className="w-full flex flex-col items-center p-2.5 rounded-2xl bg-gradient-to-b from-amber-950/60 to-slate-900/90 border border-amber-500/60 shadow-[0_0_20px_rgba(245,158,11,0.25)] hover:border-amber-400 transition-all cursor-pointer group"
+                    >
+                      <Crown className="w-5 h-5 text-amber-400 mb-0.5 animate-bounce" />
+                      <span className="text-2xl mb-1">{COSMIC_AVATARS[top1.avatar || 'earth']?.icon || '🌍'}</span>
+                      <span className="font-mono font-black text-amber-300 text-xs sm:text-sm truncate max-w-full">
+                        {top1.username}
+                      </span>
+                      <span className="font-mono-numbers font-black text-sm sm:text-base text-white text-glow-amber">
+                        {top1.score.toLocaleString()}
+                      </span>
+                    </button>
+                  ) : (
+                    <div className="w-full h-28 rounded-2xl border border-dashed border-amber-900/40 flex items-center justify-center text-[10px] font-mono text-amber-600">
+                      Empty
+                    </div>
+                  )}
+                  <div className="w-full h-16 bg-gradient-to-t from-amber-900/40 to-amber-900/10 rounded-b-xl mt-1 border-t border-amber-500/50 flex items-center justify-center text-xs font-mono font-black text-amber-400">
+                    👑 1ST
+                  </div>
+                </div>
 
-                return (
-                  <div
+                {/* 3rd Place */}
+                <div className="flex flex-col items-center justify-end">
+                  {top3 ? (
+                    <button
+                      onClick={() => handleOpenProfile(top3)}
+                      className="w-full flex flex-col items-center p-2 rounded-2xl bg-slate-900/80 border border-amber-800/40 hover:border-amber-600 transition-all cursor-pointer group"
+                    >
+                      <span className="text-xl mb-1">{COSMIC_AVATARS[top3.avatar || 'earth']?.icon || '🌍'}</span>
+                      <div className="w-5 h-5 rounded-full bg-amber-700/20 text-amber-600 flex items-center justify-center text-[10px] font-mono font-black mb-1">
+                        #3
+                      </div>
+                      <span className="font-mono font-bold text-slate-200 text-xs truncate max-w-full">
+                        {top3.username}
+                      </span>
+                      <span className="font-mono-numbers font-black text-xs sm:text-sm text-amber-500">
+                        {top3.score.toLocaleString()}
+                      </span>
+                    </button>
+                  ) : (
+                    <div className="w-full h-24 rounded-2xl border border-dashed border-slate-800/60 flex items-center justify-center text-[10px] font-mono text-slate-600">
+                      Empty
+                    </div>
+                  )}
+                  <div className="w-full h-9 bg-gradient-to-t from-slate-800/80 to-slate-800/30 rounded-b-xl mt-1 border-t border-slate-700/50 flex items-center justify-center text-[11px] font-mono font-black text-amber-700">
+                    3RD
+                  </div>
+                </div>
+              </div>
+
+              {/* REMAINING RANKS LIST */}
+              <div className="space-y-1.5 pt-2">
+                {remainingEntries.map((entry) => (
+                  <button
                     key={`${entry.username}_${entry.rank}`}
-                    className={`flex items-center justify-between p-2.5 sm:p-3 rounded-xl sm:rounded-2xl border transition-all text-xs sm:text-sm ${
+                    onClick={() => handleOpenProfile(entry)}
+                    className={`w-full flex items-center justify-between p-2.5 sm:p-3 rounded-2xl border transition-all text-xs sm:text-sm text-left cursor-pointer ${
                       entry.isCurrentPlayer
-                        ? 'bg-gradient-to-r from-cyan-950/90 via-sky-950/90 to-slate-900 border-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.35)] ring-1 ring-cyan-400/60'
-                        : isTop2
-                        ? 'bg-gradient-to-r from-slate-800/80 via-slate-900 to-slate-950 border-slate-300/80 shadow-[0_0_15px_rgba(203,213,225,0.2)] ring-1 ring-slate-300/40'
-                        : isTop3
-                        ? 'bg-gradient-to-r from-amber-950/40 via-slate-900 to-slate-950 border-amber-700/80 ring-1 ring-amber-700/40'
-                        : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
+                        ? 'bg-sky-950/80 border-sky-400/80 shadow-[0_0_18px_rgba(56,189,248,0.35)] ring-1 ring-sky-400/50'
+                        : 'bg-slate-950/60 border-slate-800/80 hover:bg-slate-900/80 hover:border-slate-700'
                     }`}
                   >
-                    {/* Rank & Identity */}
-                    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-                      <div
-                        className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center font-mono font-black text-xs shrink-0 ${
-                          isTop2
-                            ? 'bg-slate-300/20 border border-slate-300/60 text-slate-200'
-                            : isTop3
-                            ? 'bg-amber-700/20 border border-amber-700/60 text-amber-400'
-                            : 'bg-slate-900 border border-slate-800 text-slate-400'
-                        }`}
-                      >
-                        {isTop2 ? (
-                          <Medal className="w-4 h-4 text-slate-300" />
-                        ) : isTop3 ? (
-                          <Medal className="w-4 h-4 text-amber-600" />
-                        ) : (
-                          <span>#{entry.rank}</span>
-                        )}
+                    {/* Rank & Pilot Details */}
+                    <div className="flex items-center gap-2.5 sm:gap-3">
+                      <div className="w-6 sm:w-7 text-center font-mono font-black text-xs text-slate-400 shrink-0">
+                        #{entry.rank}
                       </div>
 
-                      <div className="flex flex-col min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
+                      <div className="text-base sm:text-lg shrink-0">
+                        {COSMIC_AVATARS[entry.avatar || 'earth']?.icon || '🌍'}
+                      </div>
+
+                      <div className="flex flex-col">
+                        <div className="flex items-center gap-1.5">
                           <span
-                            className={`font-mono font-bold tracking-tight text-xs sm:text-sm truncate ${
-                              entry.isCurrentPlayer
-                                ? 'text-cyan-300 font-black'
-                                : isTop2
-                                ? 'text-slate-100 font-bold'
-                                : isTop3
-                                ? 'text-amber-200 font-bold'
-                                : 'text-slate-200'
+                            className={`font-bold font-mono tracking-tight ${
+                              entry.isCurrentPlayer ? 'text-sky-300 font-black' : 'text-slate-100'
                             }`}
                           >
                             {entry.username}
                           </span>
-
-                          {isTop2 && (
-                            <span className="text-[7.5px] sm:text-[8px] font-mono font-bold bg-slate-700/50 text-slate-300 px-1 py-0.2 rounded border border-slate-500/40">
-                              2ND
-                            </span>
-                          )}
-
-                          {isTop3 && (
-                            <span className="text-[7.5px] sm:text-[8px] font-mono font-bold bg-amber-900/40 text-amber-300 px-1 py-0.2 rounded border border-amber-700/40">
-                              3RD
-                            </span>
-                          )}
-
+                          <span className="text-xs">{getCountryFlag(entry.country)}</span>
                           {entry.isCurrentPlayer && (
-                            <span className="text-[8px] sm:text-[8.5px] font-mono font-black bg-cyan-500/25 text-cyan-200 px-1.5 py-0.2 rounded border border-cyan-400/60 shadow-sm shrink-0">
+                            <span className="text-[9px] font-mono font-bold bg-sky-500/20 text-sky-300 px-1 py-0.2 rounded border border-sky-400/40">
                               YOU
                             </span>
                           )}
                         </div>
-
-                        <span className="text-[9px] sm:text-[10px] font-mono text-slate-400 truncate max-w-[140px] sm:max-w-[220px]">
+                        <span className="text-[10px] font-mono text-slate-400 truncate max-w-[160px] sm:max-w-[240px]">
                           {entry.zone}
                         </span>
                       </div>
                     </div>
 
                     {/* Score */}
-                    <div className="flex flex-col items-end pl-2 shrink-0">
-                      <span
-                        className={`font-mono-numbers font-black text-xs sm:text-base tracking-tight ${
-                          entry.isCurrentPlayer
-                            ? 'text-cyan-200 drop-shadow-[0_0_8px_rgba(6,182,212,0.5)]'
-                            : 'text-white'
-                        }`}
-                      >
+                    <div className="flex flex-col items-end">
+                      <span className="font-mono-numbers font-black text-white text-xs sm:text-sm">
                         {entry.score.toLocaleString()}
                       </span>
-                      <span className="text-[8px] sm:text-[8.5px] font-mono text-slate-500">
-                        POINTS
-                      </span>
+                      <span className="text-[9px] font-mono text-slate-500">PTS</span>
                     </div>
-                  </div>
-                );
-              })}
+                  </button>
+                ))}
+              </div>
             </>
           )}
         </div>
 
-        {/* Footer with Player Standings Summary */}
-        <div className="mt-2 pt-2 sm:pt-3 border-t border-slate-800 flex items-center justify-between gap-2 shrink-0">
-          <div className="text-[10px] sm:text-[11px] font-mono text-slate-400 truncate">
-            {currentPlayerEntry ? (
-              <span className="text-cyan-300 font-bold">
-                Your Rank: #{currentPlayerEntry.rank} ({currentPlayerEntry.score.toLocaleString()} pts)
-              </span>
-            ) : (
-              <span>Fly a run to enter today's standings!</span>
-            )}
-          </div>
+        {/* Detailed Player Profile Modal */}
+        {selectedProfile && (
+          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-3 z-60 animate-fadeIn">
+            <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-[0_0_40px_rgba(56,189,248,0.3)] flex flex-col items-center text-center">
+              <div className="text-4xl mb-2">
+                {COSMIC_AVATARS[selectedProfile.avatar || 'earth']?.icon || '🌍'}
+              </div>
 
+              <div className="flex items-center gap-2 mb-0.5">
+                <h4 className="text-lg font-display font-black text-white">{selectedProfile.username}</h4>
+                <span className="text-base">{getCountryFlag(selectedProfile.country)}</span>
+              </div>
+
+              <span className="text-[11px] font-mono text-sky-400 mb-3">
+                {COSMIC_AVATARS[selectedProfile.avatar || 'earth']?.name || 'Cosmic Pilot'}
+              </span>
+
+              {/* Profile Stats */}
+              <div className="w-full grid grid-cols-2 gap-2 text-left mb-4">
+                <div className="p-2.5 bg-slate-950/70 border border-slate-800 rounded-xl">
+                  <span className="text-[9px] font-mono text-slate-400 block uppercase">SCORE</span>
+                  <span className="text-sm font-mono-numbers font-bold text-white">
+                    {selectedProfile.score.toLocaleString()}
+                  </span>
+                </div>
+
+                <div className="p-2.5 bg-slate-950/70 border border-slate-800 rounded-xl">
+                  <span className="text-[9px] font-mono text-slate-400 block uppercase">RANK</span>
+                  <span className="text-sm font-mono-numbers font-bold text-amber-400">
+                    #{selectedProfile.rank || 1}
+                  </span>
+                </div>
+
+                <div className="p-2.5 bg-slate-950/70 border border-slate-800 rounded-xl">
+                  <span className="text-[9px] font-mono text-slate-400 block uppercase">DISTANCE</span>
+                  <span className="text-sm font-mono-numbers font-bold text-sky-300">
+                    {selectedProfile.distance ? `${selectedProfile.distance.toLocaleString()} LY` : 'Classified'}
+                  </span>
+                </div>
+
+                <div className="p-2.5 bg-slate-950/70 border border-slate-800 rounded-xl">
+                  <span className="text-[9px] font-mono text-slate-400 block uppercase">SURVIVAL</span>
+                  <span className="text-sm font-mono-numbers font-bold text-emerald-400">
+                    {selectedProfile.survivalTime ? `${selectedProfile.survivalTime}s` : 'Unrecorded'}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => {
+                  soundEngine.playClick();
+                  setSelectedProfile(null);
+                }}
+                className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs cursor-pointer"
+              >
+                CLOSE PROFILE
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="mt-3 pt-3 border-t border-slate-800 text-center shrink-0">
           <button
             onClick={() => {
               soundEngine.playClick();
               onClose();
             }}
-            className="px-4 py-1.5 sm:px-5 sm:py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl sm:rounded-2xl border border-slate-700 transition-colors text-xs cursor-pointer shrink-0"
+            className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-2xl border border-slate-700 transition-colors text-xs cursor-pointer"
           >
             CLOSE
           </button>
         </div>
+
       </div>
     </div>
   );

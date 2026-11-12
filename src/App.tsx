@@ -21,8 +21,8 @@ import { CosmeticsManager } from './game/cosmetics';
 import { DailyMissionsManager } from './game/dailyMissions';
 import { AuthService } from './firebase/authService';
 import { CloudService } from './firebase/cloudService';
-import { crazyGames } from './game/crazyGamesSdk';
 import { detectDevice } from './utils/device';
+import { crazyGames } from './game/crazyGamesSdk';
 import { RotateCw } from 'lucide-react';
 
 export default function App() {
@@ -113,21 +113,6 @@ export default function App() {
     };
   }, []);
 
-  // Safe initialization of CrazyGames SDK v3 wrapped in try/catch for QA & cross-platform support
-  useEffect(() => {
-    const initCrazyGames = async () => {
-      try {
-        if (typeof window !== 'undefined' && window.CrazyGames?.SDK?.init) {
-          await window.CrazyGames.SDK.init();
-          console.log('[CrazyGames SDK] Successfully initialized v3 on app mount');
-        }
-      } catch (err) {
-        console.warn('[CrazyGames SDK] Initialization safe catch:', err);
-      }
-    };
-    initCrazyGames();
-  }, []);
-
   // Initialize Game Engine on Mount
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -138,16 +123,12 @@ export default function App() {
     engine.onStateChange = (newState) => {
       setGameState(newState);
       if (newState === 'PLAYING') {
-        crazyGames.gameplayStart();
         LeaderboardManager.recordGamePlayed();
         if (!soundEngine.isMuted()) {
           soundEngine.startMusic();
         }
       } else {
         soundEngine.stopMusic();
-      }
-      if (newState === 'PAUSED' || newState === 'GAME_OVER' || newState === 'TITLE') {
-        crazyGames.gameplayStop();
       }
       if (newState === 'GAME_OVER') {
         const runScore = engine.stats.score;
@@ -162,6 +143,7 @@ export default function App() {
           setNewBestScore(runScore);
           setIsNewBestAnimating(true);
           soundEngine.playNewBest();
+          crazyGames.happyTime();
 
           if (newBestTimerRef.current) {
             clearTimeout(newBestTimerRef.current);
@@ -220,19 +202,6 @@ export default function App() {
       }
     };
 
-    // Clean season reset: Purge all history scores and start fresh from 0 everywhere
-    const CLEAN_SEASON_FLAG = 'earthfall_clean_season_v3_wiped';
-    if (!localStorage.getItem(CLEAN_SEASON_FLAG)) {
-      try {
-        localStorage.removeItem('earthfall_high_scores');
-        localStorage.removeItem('earthfall_best_score');
-        localStorage.removeItem('earthfall_total_distance');
-        localStorage.removeItem('earthfall_daily_missions');
-        localStorage.removeItem('earthfall_missions_date');
-        localStorage.setItem(CLEAN_SEASON_FLAG, 'true');
-      } catch {}
-    }
-
     engine.init();
     setBestScore(engine.getBestScore());
     DailyMissionsManager.checkAndRecordStreak();
@@ -253,12 +222,9 @@ export default function App() {
               LeaderboardManager.setUsername(profile.nickname);
               setShowUsernamePrompt(false);
             }
-            // Fresh season score starting from 0 (purges old bot/test scores)
-            const seasonBest = (profile as any).season3BestScore;
-            if (typeof seasonBest === 'number' && seasonBest > 0) {
-              setBestScore((prev) => Math.max(prev, seasonBest));
-            } else {
-              setBestScore(engineRef.current ? engineRef.current.getBestScore() : 0);
+            // Automatically load BEST score
+            if (typeof profile.bestScore === 'number' && profile.bestScore > 0) {
+              setBestScore((prev) => Math.max(prev, profile.bestScore || 0));
             }
             // Automatically load coins / scrap balance
             const cloudCoins = profile.scrapBalance ?? profile.coins;
@@ -283,6 +249,7 @@ export default function App() {
         }
       }
     });
+    return () => unsub();
   }, []);
 
   // Update engine when screen shake setting changes
@@ -375,32 +342,27 @@ export default function App() {
     }
 
     if (engineRef.current) {
-      crazyGames.gameplayStart();
       engineRef.current.startGame();
     }
   }, []);
 
   const handleStartStory = useCallback(() => {
-    crazyGames.gameplayStop();
     setGameState('STORY_INTRO');
   }, []);
 
   const handleStoryComplete = useCallback(() => {
     if (engineRef.current) {
-      crazyGames.gameplayStart();
       engineRef.current.startGame();
     }
   }, []);
 
   const handlePause = useCallback(() => {
-    crazyGames.gameplayStop();
     if (engineRef.current) {
       engineRef.current.pauseGame();
     }
   }, []);
 
   const handleResume = useCallback(() => {
-    crazyGames.gameplayStart();
     if (engineRef.current) {
       engineRef.current.resumeGame();
     }
@@ -411,14 +373,14 @@ export default function App() {
       clearTimeout(newBestTimerRef.current);
     }
     setIsNewBestAnimating(false);
-    if (engineRef.current) {
-      crazyGames.gameplayStart();
-      engineRef.current.startGame();
-    }
+    crazyGames.requestMidgameAd(() => {
+      if (engineRef.current) {
+        engineRef.current.startGame();
+      }
+    });
   }, []);
 
   const handleHome = useCallback(() => {
-    crazyGames.gameplayStop();
     if (newBestTimerRef.current) {
       clearTimeout(newBestTimerRef.current);
     }
@@ -426,8 +388,22 @@ export default function App() {
     if (engineRef.current) {
       engineRef.current.resetGame();
       engineRef.current.state = 'TITLE';
-      setGameState('TITLE');
     }
+    setGameState('TITLE');
+  }, []);
+
+  const handleClaimBonusScrap = useCallback(() => {
+    crazyGames.requestRewardedAd(
+      () => {
+        const bonus = 150;
+        const newTotal = CosmeticsManager.addScrap(bonus);
+        setScrapBalance(newTotal);
+        soundEngine.playRewardClaim();
+      },
+      () => {
+        console.log('[CrazyGames] Rewarded ad dismissed without reward');
+      }
+    );
   }, []);
 
   const handleToggleMute = useCallback(() => {
@@ -508,7 +484,6 @@ export default function App() {
             onOpenMissions={() => setShowDailyMissions(true)}
             onOpenLeaderboard={() => setShowLeaderboard(true)}
             onOpenStory={() => setShowStoryModal(true)}
-            onOpenGuide={() => setShowHowToPlay(true)}
             onSettings={() => setShowSettings(true)}
             bestScore={bestScore}
             muted={settings.sound.muted}
@@ -562,7 +537,6 @@ export default function App() {
             onRestart={handleRestart}
             onHome={handleHome}
             onOpenShop={() => setShowSkinShop(true)}
-            onOpenGuide={() => setShowHowToPlay(true)}
             muted={settings.sound.muted}
             isMobile={isMobileActive}
             onToggleMute={handleToggleMute}
@@ -592,7 +566,7 @@ export default function App() {
             onRestart={handleRestart}
             onHome={handleHome}
             onOpenLeaderboard={() => setShowLeaderboard(true)}
-            onOpenGuide={() => setShowHowToPlay(true)}
+            onClaimBonusScrap={handleClaimBonusScrap}
             isMobile={isMobileActive}
           />
         )}

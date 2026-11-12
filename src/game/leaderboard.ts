@@ -24,7 +24,7 @@ export class LeaderboardManager {
       }
     }).catch(() => {});
 
-    // Subscribe to real-time top 10 daily scores from Firestore
+    // Subscribe to real-time top scores from Firestore
     CloudService.subscribeTodayTop10((entries, dateKey) => {
       this.liveEntries = entries;
       this.activeDate = dateKey;
@@ -50,9 +50,6 @@ export class LeaderboardManager {
     }
   }
 
-  /**
-   * Returns current nickname from in-memory / Firestore cache (Zero localStorage)
-   */
   public static getUsername(): string | null {
     return this.inMemoryNickname || CloudService.getCachedNickname();
   }
@@ -66,9 +63,18 @@ export class LeaderboardManager {
     return this.getUsername();
   }
 
-  /**
-   * Validates nickname format: 2 to 12 alphanumeric characters
-   */
+  public static getSelectedAvatar(): string {
+    return CloudService.getSelectedAvatar();
+  }
+
+  public static setSelectedAvatar(avatarId: string): void {
+    CloudService.setSelectedAvatar(avatarId);
+  }
+
+  public static getPlayerCountry(): string {
+    return CloudService.getPlayerCountry();
+  }
+
   public static validateUsernameFormat(name: string): { valid: boolean; error?: string } {
     const trimmed = name.trim();
     if (!trimmed) {
@@ -84,10 +90,6 @@ export class LeaderboardManager {
     return { valid: true };
   }
 
-  /**
-   * Checks if nickname is already claimed by another player in Firestore.
-   * If available, locks it to the player's UID.
-   */
   public static async reserveNickname(
     name: string
   ): Promise<{ success: boolean; error?: string }> {
@@ -105,17 +107,11 @@ export class LeaderboardManager {
     return result;
   }
 
-  /**
-   * Compatibility wrapper for checking if taken
-   */
   public static async isUsernameTakenToday(name: string): Promise<boolean> {
     const res = await CloudService.checkAndReserveNickname(name);
     return !res.success && res.error === 'Nickname is already taken, please try another!';
   }
 
-  /**
-   * Sets in-memory nickname
-   */
   public static setUsername(name: string): { success: boolean; error?: string } {
     const validation = this.validateUsernameFormat(name);
     if (!validation.valid) {
@@ -130,9 +126,7 @@ export class LeaderboardManager {
   }
 
   /**
-   * Saves score to Cloud Firestore with today's date (Asia/Kolkata IST).
-   * Validates score > 0, round duration >= 5s, 10s cooldown.
-   * Updates only if new score is higher.
+   * Saves score to Cloud Firestore with today's date (Asia/Kolkata IST) and CrazyGames leaderboard.
    */
   public static submitScore(
     score: number,
@@ -146,19 +140,42 @@ export class LeaderboardManager {
     const nickname = this.getUsername();
     if (!nickname) return;
 
-    CloudService.submitDailyScore(score, roundDuration, distance, zoneName, nickname).catch((err) => {
+    const avatar = this.getSelectedAvatar();
+    const country = this.getPlayerCountry();
+
+    CloudService.submitDailyScore(
+      score,
+      roundDuration,
+      distance,
+      zoneName,
+      nickname,
+      avatar,
+      country
+    ).catch((err) => {
       console.warn('Firestore daily score submission note:', err);
     });
   }
 
   /**
    * Returns current daily leaderboard from Cloud Firestore sorted descending.
-   * 100% real players only—if empty, returns empty array.
    */
   public static getLeaderboard(): LeaderboardEntry[] {
     const currentUsername = (this.getUsername() || '').trim().toLowerCase();
 
     return this.liveEntries.map((entry, idx) => ({
+      ...entry,
+      rank: idx + 1,
+      isCurrentPlayer: currentUsername ? entry.username.trim().toLowerCase() === currentUsername : false,
+    }));
+  }
+
+  public static async fetchFilterLeaderboard(
+    filter: 'global' | 'country' | 'alltime' | 'weekly'
+  ): Promise<LeaderboardEntry[]> {
+    const currentUsername = (this.getUsername() || '').trim().toLowerCase();
+    const list = await CloudService.fetchLeaderboard(filter, this.getPlayerCountry());
+
+    return list.map((entry, idx) => ({
       ...entry,
       rank: idx + 1,
       isCurrentPlayer: currentUsername ? entry.username.trim().toLowerCase() === currentUsername : false,
