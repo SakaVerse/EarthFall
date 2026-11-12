@@ -20,7 +20,7 @@ export interface Particle {
   alpha: number;
   life: number;
   maxLife: number;
-  shape?: 'circle' | 'spark' | 'ring' | 'streak' | 'diamond' | 'bubble';
+  shape?: 'circle' | 'spark' | 'ring' | 'streak' | 'diamond' | 'bubble' | 'shard';
   length?: number;
   glow?: boolean;
   active: boolean;
@@ -97,6 +97,20 @@ export class ParticleSystem {
         ctx.moveTo(p.x, p.y);
         ctx.lineTo(p.x - (p.length || 24), p.y);
         ctx.stroke();
+      } else if (p.shape === 'shard') {
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.life * 9);
+        ctx.beginPath();
+        ctx.moveTo(0, -p.size * 1.2);
+        ctx.lineTo(p.size * 0.9, p.size * 0.8);
+        ctx.lineTo(-p.size * 0.9, p.size * 0.8);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+        ctx.restore();
       } else if (p.shape === 'spark' || p.shape === 'diamond') {
         ctx.save();
         ctx.translate(p.x, p.y);
@@ -260,7 +274,7 @@ export class ParticleSystem {
       p.alpha = 1;
       p.life = 0;
       p.maxLife = 0.35 + Math.random() * 0.25;
-      p.shape = Math.random() > 0.4 ? 'spark' : 'circle';
+      p.shape = Math.random() > 0.45 ? 'shard' : Math.random() > 0.25 ? 'diamond' : 'spark';
       p.glow = true;
     }
 

@@ -11,6 +11,15 @@
 
 import { ZONES } from './constants';
 import { ThemeId, ZoneId } from './types';
+import {
+  createLowPolySaturnMesh,
+  createLowPolyJupiterMesh,
+  renderLowPolyMesh,
+} from './lowPoly3D';
+
+// Cached low-poly 3D celestial landmarks
+const saturnMeshes = createLowPolySaturnMesh();
+const jupiterMesh = createLowPolyJupiterMesh();
 
 interface Star {
   x: number;
@@ -890,58 +899,28 @@ export class SpaceRenderer {
     ctx.translate(obj.x, obj.y);
 
     if (obj.type === 'saturn') {
-      // Saturn planet sphere
-      const pGrad = ctx.createRadialGradient(-obj.size * 0.35, -obj.size * 0.35, 6, 0, 0, obj.size);
-      pGrad.addColorStop(0, '#fef3c7');
-      pGrad.addColorStop(0.4, '#f59e0b');
-      pGrad.addColorStop(0.8, '#b45309');
-      pGrad.addColorStop(1, '#451a03');
+      // 1. Low-Poly 3D Saturn Planar Rings
+      renderLowPolyMesh(ctx, saturnMeshes.ring, {
+        x: 0,
+        y: 0,
+        scale: obj.size * 1.1,
+        rotX: 0.42,
+        rotY: time * 0.1,
+        ambientLight: 0.5,
+        wireframeAlpha: 0.25,
+        cullBackfaces: false,
+      });
 
-      // Back half of planetary rings (Cassini division)
-      ctx.save();
-      ctx.rotate(0.38);
-      ctx.scale(1, 0.28);
-      ctx.strokeStyle = 'rgba(217, 119, 6, 0.5)';
-      ctx.lineWidth = 22;
-      ctx.beginPath();
-      ctx.arc(0, 0, obj.size * 2.1, Math.PI, Math.PI * 2);
-      ctx.stroke();
-
-      // Cassini Division dark gap
-      ctx.strokeStyle = 'rgba(10, 1, 24, 0.85)';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(0, 0, obj.size * 2.05, Math.PI, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
-
-      // Planet body
-      ctx.fillStyle = pGrad;
-      ctx.beginPath();
-      ctx.arc(0, 0, obj.size, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Cloud bands
-      ctx.fillStyle = 'rgba(120, 53, 15, 0.28)';
-      ctx.fillRect(-obj.size, -obj.size * 0.25, obj.size * 2, obj.size * 0.18);
-      ctx.fillRect(-obj.size, obj.size * 0.1, obj.size * 2, obj.size * 0.2);
-
-      // Front half of planetary rings
-      ctx.save();
-      ctx.rotate(0.38);
-      ctx.scale(1, 0.28);
-      ctx.strokeStyle = 'rgba(251, 191, 36, 0.75)';
-      ctx.lineWidth = 22;
-      ctx.beginPath();
-      ctx.arc(0, 0, obj.size * 2.1, 0, Math.PI);
-      ctx.stroke();
-
-      ctx.strokeStyle = 'rgba(10, 1, 24, 0.85)';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(0, 0, obj.size * 2.05, 0, Math.PI);
-      ctx.stroke();
-      ctx.restore();
+      // 2. Low-Poly 3D Saturn Body
+      renderLowPolyMesh(ctx, saturnMeshes.body, {
+        x: 0,
+        y: 0,
+        scale: obj.size,
+        rotY: time * 0.15,
+        ambientLight: 0.38,
+        wireframeAlpha: 0.2,
+        cullBackfaces: true,
+      });
     } else if (obj.type === 'mars') {
       const mGrad = ctx.createRadialGradient(-obj.size * 0.35, -obj.size * 0.35, 4, 0, 0, obj.size);
       mGrad.addColorStop(0, '#fca5a5');
@@ -968,28 +947,16 @@ export class SpaceRenderer {
       ctx.arc(0, -obj.size * 0.84, obj.size * 0.3, 0, Math.PI * 2);
       ctx.fill();
     } else if (obj.type === 'jupiter') {
-      const jGrad = ctx.createRadialGradient(-obj.size * 0.35, -obj.size * 0.35, 8, 0, 0, obj.size);
-      jGrad.addColorStop(0, '#fed7aa');
-      jGrad.addColorStop(0.45, '#ea580c');
-      jGrad.addColorStop(0.85, '#7c2d12');
-      jGrad.addColorStop(1, '#250702');
-
-      ctx.fillStyle = jGrad;
-      ctx.beginPath();
-      ctx.arc(0, 0, obj.size, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Jupiter cloud bands
-      ctx.fillStyle = 'rgba(67, 20, 7, 0.4)';
-      ctx.fillRect(-obj.size, -obj.size * 0.45, obj.size * 2, obj.size * 0.16);
-      ctx.fillRect(-obj.size, -obj.size * 0.1, obj.size * 2, obj.size * 0.22);
-      ctx.fillRect(-obj.size, obj.size * 0.3, obj.size * 2, obj.size * 0.18);
-
-      // Great Red Spot
-      ctx.fillStyle = '#b91c1c';
-      ctx.beginPath();
-      ctx.ellipse(obj.size * 0.38, obj.size * 0.22, obj.size * 0.26, obj.size * 0.17, 0.1, 0, Math.PI * 2);
-      ctx.fill();
+      // Low-Poly 3D Jupiter with faceted Jovian bands & Great Red Spot
+      renderLowPolyMesh(ctx, jupiterMesh, {
+        x: 0,
+        y: 0,
+        scale: obj.size,
+        rotY: time * 0.18,
+        ambientLight: 0.35,
+        wireframeAlpha: 0.2,
+        cullBackfaces: true,
+      });
     } else if (obj.type === 'ice_planet') {
       const iGrad = ctx.createRadialGradient(-obj.size * 0.35, -obj.size * 0.35, 6, 0, 0, obj.size);
       iGrad.addColorStop(0, '#e0f2fe');

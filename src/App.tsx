@@ -19,6 +19,8 @@ import { LeaderboardManager } from './game/leaderboard';
 import { soundEngine } from './game/audio';
 import { CosmeticsManager } from './game/cosmetics';
 import { DailyMissionsManager } from './game/dailyMissions';
+import { StoryProgressionManager } from './game/storyProgression';
+import { CheckpointData } from './game/types';
 import { AuthService } from './firebase/authService';
 import { CloudService } from './firebase/cloudService';
 import { detectDevice } from './utils/device';
@@ -36,6 +38,7 @@ export default function App() {
   const [showDailyMissions, setShowDailyMissions] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showStoryModal, setShowStoryModal] = useState(false);
+  const [savedCheckpoint, setSavedCheckpoint] = useState<CheckpointData | null>(() => StoryProgressionManager.getSavedCheckpoint());
   const [isNewBestAnimating, setIsNewBestAnimating] = useState(false);
   const [newBestScore, setNewBestScore] = useState(0);
   const newBestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -63,6 +66,8 @@ export default function App() {
   const [isGrounded, setIsGrounded] = useState(false);
   const [isGroundHazardActive, setIsGroundHazardActive] = useState(false);
   const [scrapBalance, setScrapBalance] = useState<number>(() => CosmeticsManager.getScrapBalance());
+  const [shardsBalance, setShardsBalance] = useState<number>(() => StoryProgressionManager.getShards());
+  const [isFistMode, setIsFistMode] = useState<boolean>(false);
   const [coinsEarnedThisRun, setCoinsEarnedThisRun] = useState<number>(0);
   const [activePowerUps, setActivePowerUps] = useState<ActivePowerUp[]>([]);
   const [skills, setSkills] = useState<ActiveSkill[]>([]);
@@ -177,7 +182,10 @@ export default function App() {
       newMaxJumps,
       newIsGrounded,
       newIsHazard,
-      newScrap
+      newScrap,
+      newShards,
+      _currentBoss,
+      newIsFistMode
     ) => {
       setStats({ ...newStats });
       setHealth(newHealth);
@@ -199,6 +207,12 @@ export default function App() {
       }
       if (typeof newScrap === 'number') {
         setScrapBalance(newScrap);
+      }
+      if (typeof newShards === 'number') {
+        setShardsBalance(newShards);
+      }
+      if (typeof newIsFistMode === 'boolean') {
+        setIsFistMode(newIsFistMode);
       }
     };
 
@@ -263,13 +277,18 @@ export default function App() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Disable all game key listeners while UsernameModal is active or any input is focused
-      if (
+      const activeEl = document.activeElement;
+      const isInputActive =
         showUsernamePrompt ||
+        activeEl?.tagName === 'INPUT' ||
+        activeEl?.tagName === 'TEXTAREA' ||
+        (activeEl as HTMLElement)?.isContentEditable ||
         (e.target as HTMLElement)?.tagName === 'INPUT' ||
         (e.target as HTMLElement)?.tagName === 'TEXTAREA' ||
-        (e.target as HTMLElement)?.isContentEditable
-      ) {
-        return;
+        (e.target as HTMLElement)?.closest('input, textarea') !== null;
+
+      if (isInputActive) {
+        return; // Allow full native typing of S, W, Space, etc.
       }
 
       if (!engineRef.current) return;
@@ -280,14 +299,22 @@ export default function App() {
       }
 
       if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
-        if (gameState === 'TITLE' && !showHowToPlay && !showSettings && !showSkinShop && !showDailyMissions && !showLeaderboard && !showUsernamePrompt) {
-          handleStartGame();
+        if (gameState === 'TITLE' && !showHowToPlay && !showSettings && !showSkinShop && !showDailyMissions && !showLeaderboard && !showStoryModal && !showUsernamePrompt) {
+          handleStartInfiniteRun();
         } else if (gameState === 'PLAYING') {
           engineRef.current.applyJump();
         }
       } else if (e.code === 'ArrowDown' || e.code === 'KeyS') {
         if (gameState === 'PLAYING') {
           engineRef.current.applyDive();
+        }
+      } else if (e.code === 'KeyX' || e.key === 'x' || e.key === 'X') {
+        if (gameState === 'PLAYING') {
+          engineRef.current.executePunch();
+        }
+      } else if (e.code === 'KeyC' || e.key === 'c' || e.key === 'C') {
+        if (gameState === 'PLAYING') {
+          engineRef.current.toggleFistMode();
         }
       } else if (e.code === 'KeyQ' || e.key === 'q' || e.key === 'Q') {
         if (gameState === 'PLAYING') {
@@ -333,7 +360,7 @@ export default function App() {
     }
   }, []);
 
-  const handleStartGame = useCallback(async () => {
+  const handleStartInfiniteRun = useCallback(() => {
     const currentUsername = LeaderboardManager.getUsername();
     if (!currentUsername) {
       setUsernamePromptError(null);
@@ -342,9 +369,29 @@ export default function App() {
     }
 
     if (engineRef.current) {
-      engineRef.current.startGame();
+      engineRef.current.startInfiniteRun();
     }
   }, []);
+
+  const handleStartStoryMode = useCallback((fromCheckpoint = true) => {
+    const currentUsername = LeaderboardManager.getUsername();
+    if (!currentUsername) {
+      setUsernamePromptError(null);
+      setShowUsernamePrompt(true);
+      return;
+    }
+
+    if (engineRef.current) {
+      engineRef.current.startStoryMode(fromCheckpoint);
+    }
+  }, []);
+
+  const handleClearCheckpoint = useCallback(() => {
+    StoryProgressionManager.clearCheckpoint();
+    setSavedCheckpoint(null);
+  }, []);
+
+  const handleStartGame = handleStartInfiniteRun;
 
   const handleStartStory = useCallback(() => {
     setGameState('STORY_INTRO');
@@ -450,12 +497,12 @@ export default function App() {
 
         {/* PORTRAIT ORIENTATION HELPER FOR MOBILE */}
         {isMobileActive && isPortrait && showOrientationHint && (
-          <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-50 pointer-events-auto flex items-center gap-2 bg-slate-950/95 border border-sky-500/50 text-sky-200 text-[10px] sm:text-[11px] font-mono px-3 py-1.5 rounded-full shadow-2xl backdrop-blur-md">
-            <RotateCw className="w-3.5 h-3.5 text-sky-400 animate-spin" />
-            <span>Rotate to Landscape for Wider Field of View</span>
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 pointer-events-auto flex items-center gap-1.5 bg-slate-950/95 border border-sky-500/50 text-sky-200 text-[8.5px] sm:text-[10px] font-mono px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full shadow-2xl backdrop-blur-md max-w-[92vw]">
+            <RotateCw className="w-3 h-3 text-sky-400 animate-spin shrink-0" />
+            <span className="truncate">Rotate to Landscape for Wider View</span>
             <button
               onClick={() => setShowOrientationHint(false)}
-              className="ml-1 text-slate-400 hover:text-white font-bold cursor-pointer"
+              className="ml-1 text-slate-400 hover:text-white font-bold cursor-pointer shrink-0"
             >
               ✕
             </button>
@@ -470,7 +517,7 @@ export default function App() {
               setUsernamePromptError(null);
               setShowUsernamePrompt(false);
               if (engineRef.current) {
-                engineRef.current.startGame();
+                engineRef.current.startInfiniteRun();
               }
             }}
           />
@@ -479,11 +526,15 @@ export default function App() {
         {/* TITLE SCREEN OVERLAY */}
         {gameState === 'TITLE' && !showHowToPlay && !showSettings && !showSkinShop && !showDailyMissions && !showLeaderboard && !showStoryModal && !showUsernamePrompt && (
           <TitleScreen
-            onStart={handleStartGame}
+            onStartInfiniteRun={handleStartInfiniteRun}
+            onStartStoryMode={handleStartStoryMode}
+            savedCheckpoint={savedCheckpoint}
+            onClearCheckpoint={handleClearCheckpoint}
             onOpenShop={() => setShowSkinShop(true)}
             onOpenMissions={() => setShowDailyMissions(true)}
             onOpenLeaderboard={() => setShowLeaderboard(true)}
             onOpenStory={() => setShowStoryModal(true)}
+            onOpenHowToPlay={() => setShowHowToPlay(true)}
             onSettings={() => setShowSettings(true)}
             bestScore={bestScore}
             muted={settings.sound.muted}
@@ -507,6 +558,9 @@ export default function App() {
             isGrounded={isGrounded}
             isGroundHazardActive={isGroundHazardActive}
             scrapBalance={scrapBalance}
+            shardsBalance={shardsBalance}
+            isFistMode={isFistMode}
+            onToggleFistMode={() => engineRef.current?.toggleFistMode()}
             activePowerUps={activePowerUps}
             skills={skills}
             bestScore={bestScore}
@@ -523,6 +577,9 @@ export default function App() {
           <TouchControls
             onJump={() => engineRef.current?.applyJump()}
             onDive={() => engineRef.current?.applyDive()}
+            onPunch={() => engineRef.current?.executePunch()}
+            onToggleFistMode={() => engineRef.current?.toggleFistMode()}
+            isFistMode={isFistMode}
             skills={skills}
             onTriggerSkill={handleTriggerSkill}
             jumpsRemaining={jumpsRemaining}

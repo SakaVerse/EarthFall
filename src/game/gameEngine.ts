@@ -21,20 +21,30 @@ import {
 import {
   ActivePowerUp,
   ActiveSkill,
+  BossEntity,
+  ChapterId,
+  CheckpointData,
   CosmicEnergyOrb,
+  FistPunch,
   FloatingText,
+  GameMode,
   GameState,
   HighScoreRecord,
+  Npc3D,
   Obstacle,
   ObstacleType,
+  Platform3D,
   PlayerStats,
   PowerUpItem,
   PowerUpType,
   SkinItem,
   SkillType,
+  Structure3D,
   ThemeId,
+  VanguardLaser,
   ZoneId,
 } from './types';
+import { CHAPTERS } from './constants';
 import { soundEngine } from './audio';
 import { renderEarth } from './earthRenderer';
 import { ParticleSystem } from './particleSystem';
@@ -44,6 +54,8 @@ import { CosmeticsManager } from './cosmetics';
 import { DailyMissionsManager } from './dailyMissions';
 import { LeaderboardManager } from './leaderboard';
 import { crazyGames } from './crazyGamesSdk';
+import { StoryProgressionManager } from './storyProgression';
+import { PlatformerRenderer } from './platformerRenderer';
 
 const HIGH_SCORE_KEY = 'earthfall_high_scores_v2';
 
@@ -52,6 +64,9 @@ export class GameEngine {
   public ctx: CanvasRenderingContext2D;
 
   public state: GameState = 'TITLE';
+  public mode: GameMode = 'INFINITE_RUN';
+  public currentChapter: ChapterId = 1;
+
   public onStateChange?: (state: GameState) => void;
   public onStatsUpdate?: (
     stats: PlayerStats,
@@ -63,13 +78,38 @@ export class GameEngine {
     maxJumps: number,
     isGrounded: boolean,
     isGroundHazardActive: boolean,
-    scrapBalance: number
+    scrapBalance: number,
+    shardsBalance?: number,
+    currentBoss?: BossEntity | null,
+    isFistMode?: boolean
   ) => void;
+  public onOpenNpcDialogue?: (npc: Npc3D) => void;
+  public onOpenMerchant?: (merchantType: 'star_forger' | 'chrono_architect' | 'aether_healer') => void;
+
+  // Guardian 2.5D Combat State
+  public isFistMode = false; // False = carrying Earth in hands; True = Earth on Back Solar Ring, fists ready
+  public punch: FistPunch | null = null;
+  public punchComboStep: 1 | 2 | 3 = 1;
+  public punchTimer = 0;
+  public runPhase = 0;
+
+  // 2 mini Vanguard Spaceships auto-fire
+  public vanguardLasers: VanguardLaser[] = [];
+  public vanguardFireCooldown = 0;
+
+  // 2.5D Multi-Tier Floating Platforms & 3D Structures
+  public platforms: Platform3D[] = [];
+  public structures: Structure3D[] = [];
+  public npcs: Npc3D[] = [];
+  public currentBoss: BossEntity | null = null;
+  public activeCheckpoint: CheckpointData | null = null;
+  public shardsCollectedThisRun = 0;
+  private platformSpawnX = 0;
 
   // Active Skills Map
   public skills: Map<SkillType, ActiveSkill> = new Map();
 
-  // Jump system: 10 limited jumps, refills ONLY on landing on the ground
+  // Jump system: 10 limited jumps, refills ONLY on landing on the ground or a 3D platform
   public jumpCount = 0;
   public readonly MAX_JUMPS = 10;
   public get jumpsRemaining(): number {
@@ -198,6 +238,21 @@ export class GameEngine {
     this.orbs = [];
     this.powerUpItems = [];
     this.particles.clear();
+
+    // 2.5D State Reset
+    this.isFistMode = false;
+    this.punch = null;
+    this.punchComboStep = 1;
+    this.punchTimer = 0;
+    this.runPhase = 0;
+    this.vanguardLasers = [];
+    this.vanguardFireCooldown = 0;
+    this.platforms = [];
+    this.structures = [];
+    this.npcs = [];
+    this.currentBoss = null;
+    this.shardsCollectedThisRun = 0;
+    this.platformSpawnX = 0;
 
     // Initialize 3 Active Skills
     this.skills.clear();
@@ -339,13 +394,244 @@ export class GameEngine {
     }
   }
 
-  public startGame() {
+  public startGame(mode: GameMode = 'INFINITE_RUN', fromCheckpoint = false) {
     this.resetGame();
+    this.mode = mode;
+
+    if (mode === 'STORY_MODE') {
+      if (fromCheckpoint) {
+        const saved = StoryProgressionManager.getSavedCheckpoint();
+        if (saved) {
+          this.currentChapter = saved.chapter;
+          this.stats.distance = saved.distance;
+          this.earthHealth = Math.max(50, saved.health);
+          this.activeCheckpoint = saved;
+        } else {
+          this.currentChapter = 1;
+        }
+      } else {
+        this.currentChapter = 1;
+      }
+    }
+
+    this.spawnInitialPlatforms();
     this.incrementGamesPlayed();
     this.state = 'PLAYING';
     soundEngine.startMusic(128);
     crazyGames.gameplayStart();
     if (this.onStateChange) this.onStateChange(this.state);
+  }
+
+  public startStoryMode(fromCheckpoint = false) {
+    this.startGame('STORY_MODE', fromCheckpoint);
+  }
+
+  public startInfiniteRun() {
+    this.startGame('INFINITE_RUN', false);
+  }
+
+  // GUARDIAN COMBAT: TOGGLE SOLAR BACK-HOLDER (C / Combat button)
+  public toggleFistMode() {
+    if (this.state !== 'PLAYING') return;
+    this.isFistMode = !this.isFistMode;
+    this.particles.emitJumpRing(this.earthX, this.earthY, this.isFistMode ? '#fbbf24' : '#38bdf8');
+    soundEngine.playJump();
+    this.addFloatingText(
+      this.isFistMode ? 'SOLAR RING LOCKED: FISTS ACTIVE!' : 'HOLDING EARTH IN HANDS',
+      this.earthX + 40,
+      this.earthY - 60,
+      this.isFistMode ? '#fbbf24' : '#38bdf8',
+      1.1
+    );
+  }
+
+  // GUARDIAN COMBAT: 3-HIT FIST PUNCH COMBO (X / Melee button)
+  public executePunch() {
+    if (this.state !== 'PLAYING') return;
+    if (!this.isFistMode) {
+      this.isFistMode = true; // Auto-lock Earth on back when punching
+    }
+
+    const mult = StoryProgressionManager.getFistDamageMultiplier();
+    const baseDamage = 75 * mult;
+
+    // Advance combo step: 1 (Jab) -> 2 (Cross) -> 3 (Slam)
+    const step = this.punchComboStep;
+    const isHeavySlam = step === 3;
+    const damage = isHeavySlam ? baseDamage * 2.2 : baseDamage;
+    const radius = isHeavySlam ? 90 : 60;
+    const reachX = this.earthX + (isHeavySlam ? 85 : 70);
+
+    this.punch = {
+      step,
+      timer: 0.28,
+      x: reachX,
+      y: this.earthY,
+      radius,
+      damage,
+    };
+
+    this.punchComboStep = (step % 3 + 1) as 1 | 2 | 3;
+    soundEngine.playJump();
+    this.particles.emitContinuousExhaust(reachX, this.earthY, true, this.equippedSkin);
+
+    // Destroy obstacles hit by punch
+    for (let i = this.obstacles.length - 1; i >= 0; i--) {
+      const obs = this.obstacles[i];
+      const dist = Math.hypot(reachX - obs.x, this.earthY - obs.y);
+      if (dist < radius + obs.radius) {
+        this.particles.emitExplosion(obs.x, obs.y, '#f59e0b', 20);
+        this.obstacles.splice(i, 1);
+        this.stats.score += 200;
+        this.stats.obstaclesDodged++;
+        this.addFloatingText(`PUNCH! +200`, obs.x, obs.y, '#f59e0b');
+      }
+    }
+
+    // Damage Boss if in range
+    if (this.currentBoss && this.currentBoss.state !== 'defeated') {
+      const bossDist = Math.hypot(reachX - this.currentBoss.x, this.earthY - this.currentBoss.y);
+      if (bossDist < radius + this.currentBoss.width / 2) {
+        this.currentBoss.health -= damage;
+        this.triggerScreenShake(0.35);
+        this.particles.emitExplosion(this.currentBoss.x, this.currentBoss.y, '#ef4444', 24);
+        this.addFloatingText(`-${Math.round(damage)}`, this.currentBoss.x, this.currentBoss.y - 40, '#ef4444', 1.2);
+        if (this.currentBoss.health <= 0) {
+          this.defeatBoss();
+        }
+      }
+    }
+  }
+
+  // NPC INTERACTION: Oracle, Elder, Scholars & Merchants (E / Talk button)
+  public interactNpc(): boolean {
+    if (this.state !== 'PLAYING') return false;
+    for (const npc of this.npcs) {
+      const dist = Math.hypot(this.earthX - npc.x, this.earthY - npc.y);
+      if (dist < 130) {
+        if (npc.merchantType && this.onOpenMerchant) {
+          this.onOpenMerchant(npc.merchantType);
+          return true;
+        } else if (this.onOpenNpcDialogue) {
+          this.onOpenNpcDialogue(npc);
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // SPAWN INITIAL 2.5D PLATFORMS
+  private spawnInitialPlatforms() {
+    this.platforms = [];
+    this.structures = [];
+    this.npcs = [];
+    this.platformSpawnX = 0;
+
+    const style = this.mode === 'STORY_MODE'
+      ? CHAPTERS[this.currentChapter]?.platformStyle || 'rock'
+      : 'rock';
+
+    // Start with a solid entrance runway
+    this.platforms.push({
+      id: 'plat_start_0',
+      x: 0,
+      y: CANVAS_VIRTUAL_HEIGHT - 90,
+      width: 480,
+      height: 36,
+      type: style,
+    });
+    this.platformSpawnX = 480;
+
+    // Generate upcoming multi-tier platforms ahead
+    this.generatePlatformsAhead(CANVAS_VIRTUAL_WIDTH * 2.5);
+  }
+
+  private generatePlatformsAhead(targetX: number) {
+    const style = this.mode === 'STORY_MODE'
+      ? CHAPTERS[this.currentChapter]?.platformStyle || 'rock'
+      : 'rock';
+
+    const possibleTiers = [
+      CANVAS_VIRTUAL_HEIGHT - 90,  // Low tier
+      CANVAS_VIRTUAL_HEIGHT - 210, // Mid tier
+      CANVAS_VIRTUAL_HEIGHT - 330, // High tier
+    ];
+
+    while (this.platformSpawnX < targetX) {
+      const gap = 120 + Math.random() * 110;
+      const width = 160 + Math.random() * 180;
+      const tierY = possibleTiers[Math.floor(Math.random() * possibleTiers.length)];
+      const isMoving = Math.random() < 0.22;
+      const isCrumbling = Math.random() < 0.16;
+      const hasSpring = Math.random() < 0.14;
+
+      const platX = this.platformSpawnX + gap;
+      this.platforms.push({
+        id: `plat_${Date.now()}_${Math.random()}`,
+        x: platX,
+        y: tierY,
+        width,
+        height: 34,
+        type: isCrumbling ? 'crumbling' : hasSpring ? 'bounce' : style,
+        isMoving,
+        moveRange: 60,
+        moveSpeed: 1.2,
+        baseY: tierY,
+        isCrumbling,
+        hasSpring,
+      });
+
+      // Periodically spawn Safe Haven Cosmic Villages or Khandhar Ancient Ruins in Story Mode
+      if (this.mode === 'STORY_MODE' && Math.random() < 0.28 && width > 220) {
+        const structTypes = ['village_hut', 'energy_windmill', 'star_lantern', 'ruin_pillar', 'lore_obelisk'] as const;
+        const sType = structTypes[Math.floor(Math.random() * structTypes.length)];
+        this.structures.push({
+          id: `struct_${Date.now()}_${Math.random()}`,
+          type: sType,
+          x: platX + width / 2,
+          y: tierY - 24,
+          width: 60,
+          height: 80,
+        });
+
+        // Spawn friendly Guide or Merchant NPC in villages / ruins
+        if (Math.random() < 0.45 && this.npcs.length < 4) {
+          const npcTypes = [
+            { type: 'oracle' as const, name: 'Oracle Vael', title: 'Cosmic Seer', dialogue: ['The stars guide your path, Titan.', 'Beware the elemental titan slumbering ahead.'] },
+            { type: 'elder' as const, name: 'Elder Solis', title: 'Keeper of the Sun', dialogue: ['Guard Earth with your life, Guardian.', 'Her oceans hold the last embers of life.'] },
+            { type: 'scholar' as const, name: 'Scholar Kael', title: 'Ruin Archaeologist', dialogue: ['These Khandhar ruins date back a billion years.', 'Use your energy fists to smash elemental barriers!'] },
+            { type: 'merchant' as const, name: 'The Star-Forger', title: 'Armor & Fists Master', dialogue: ['Bring me Cosmic Shards to strengthen your gauntlets!'], merchantType: 'star_forger' as const },
+          ];
+          const choice = npcTypes[Math.floor(Math.random() * npcTypes.length)];
+          this.npcs.push({
+            id: `npc_${Date.now()}_${Math.random()}`,
+            name: choice.name,
+            title: choice.title,
+            type: choice.type,
+            x: platX + width / 2 + 30,
+            y: tierY - 30,
+            dialogue: choice.dialogue,
+            merchantType: choice.merchantType,
+          });
+        }
+      }
+
+      // Checkpoint Beacon Spawning in Story Mode
+      if (this.mode === 'STORY_MODE' && Math.abs(platX - 1400) < 180 && !this.structures.some(s => s.type === 'checkpoint_beacon')) {
+        this.structures.push({
+          id: `beacon_${Date.now()}`,
+          type: 'checkpoint_beacon',
+          x: platX + width / 2,
+          y: tierY - 45,
+          width: 50,
+          height: 110,
+          isActive: false,
+        });
+      }
+
+      this.platformSpawnX = platX + width;
+    }
   }
 
   public pauseGame() {
@@ -585,6 +871,12 @@ export class GameEngine {
     // Update Zone Progression
     this.updateZoneProgression();
 
+    // 2.5D Subsystems
+    this.update2D5Platformer(dt);
+    this.updateVanguard(dt);
+    this.updatePunch(dt);
+    this.updateBoss(dt);
+
     // Spawning
     this.updateSpawners(dt);
 
@@ -596,14 +888,17 @@ export class GameEngine {
     // Collisions
     this.checkCollisions();
 
-    // Distance & Score Increment
+    // Distance & Score Increment (Story mode distance pauses during Boss fights)
+    const isBossEngaged = this.currentBoss && this.currentBoss.state !== 'defeated';
     const scoreMult = hasBoost ? 3 : 1;
-    const distDelta = (this.gameSpeed * dt) / 10;
+    const distDelta = isBossEngaged ? 0 : (this.gameSpeed * dt) / 10;
     this.stats.distance += distDelta;
-    this.stats.score += Math.round(this.gameSpeed * dt * 0.1 * scoreMult);
-    DailyMissionsManager.recordProgress('distance', Math.round(distDelta));
+    this.stats.score += Math.round((isBossEngaged ? 40 : this.gameSpeed) * dt * 0.1 * scoreMult);
+    if (!isBossEngaged) {
+      DailyMissionsManager.recordProgress('distance', Math.round(distDelta));
+    }
 
-    // Inform UI with active skills, jumps remaining (e.g. 7/10 Jumps), and scrap
+    // Inform UI with active skills, jumps remaining, scrap, shards, boss, and fist mode
     if (this.onStatsUpdate) {
       this.onStatsUpdate(
         this.stats,
@@ -615,7 +910,10 @@ export class GameEngine {
         this.MAX_JUMPS,
         this.isGrounded,
         this.isGroundHazardActive,
-        CosmeticsManager.getScrapBalance()
+        CosmeticsManager.getScrapBalance(),
+        StoryProgressionManager.getShards(),
+        this.currentBoss,
+        this.isFistMode
       );
     }
   }
@@ -639,15 +937,49 @@ export class GameEngine {
       this.particles.emitExplosionBurst(this.earthX, minY, this.equippedSkin, '#38bdf8');
     }
 
+    // 2.5D Platform Collision & Landing Detection
+    let landedOnPlatform = false;
+    for (const p of this.platforms) {
+      if (p.isFallen) continue;
+      const feetY = this.earthY + EARTH_RADIUS;
+      const isOver = this.earthX >= p.x - 25 && this.earthX <= p.x + p.width + 25;
+      if (isOver && feetY >= p.y - 8 && feetY <= p.y + 24 && this.earthVy >= 0) {
+        this.earthY = p.y - EARTH_RADIUS;
+        this.earthVy = 0;
+        this.isGrounded = true;
+        this.jumpCount = 0; // JUMP REFILL ON PLATFORM LANDING!
+        landedOnPlatform = true;
+
+        if (p.hasSpring) {
+          this.earthVy = -640;
+          soundEngine.playJump();
+          this.particles.emitEmpBlast(this.earthX, p.y);
+          this.addFloatingText('SPRING BOUNCE!', this.earthX, p.y - 30, '#22c55e');
+        }
+
+        if (p.isCrumbling) {
+          p.crumbleTimer = (p.crumbleTimer ?? 0.8) - dt;
+          if (p.crumbleTimer <= 0) {
+            p.isFallen = true;
+            this.particles.emitExplosion(p.x + p.width / 2, p.y, '#f59e0b', 20);
+          }
+        }
+        break;
+      }
+    }
+
+    if (landedOnPlatform) {
+      this.groundContactTimer = 0;
+      this.isGroundHazardActive = false;
+    }
+
     // GROUND CONTACT & ANTI-CHEATING FLOOR HAZARD:
     const isTouchingFloor = this.earthY >= maxY - 3;
-    this.isGrounded = isTouchingFloor;
-
     if (isTouchingFloor) {
+      this.isGrounded = true;
       this.earthY = maxY;
       this.earthVy = 0;
-      // JUMP COUNTER RESETS ONLY WHEN EARTH LANDS / TOUCHES THE GROUND:
-      // Instantly refills back to 10/10 Jumps on landing!
+      // JUMP COUNTER RESETS ONLY WHEN EARTH LANDS / TOUCHES THE GROUND OR PLATFORMS:
       this.jumpCount = 0;
 
       // GROUND HUGGING ANTI-CHEAT:
@@ -671,10 +1003,16 @@ export class GameEngine {
       } else {
         this.isGroundHazardActive = false;
       }
-    } else {
+    } else if (!landedOnPlatform) {
       // In mid-air, reset ground contact timer and hazard (jumps do NOT refill in air)
+      this.isGrounded = false;
       this.groundContactTimer = 0;
       this.isGroundHazardActive = false;
+    }
+
+    // Animate running stride when grounded
+    if (this.isGrounded) {
+      this.runPhase += dt * (this.gameSpeed / 25);
     }
 
     // Invincibility timer
@@ -702,22 +1040,269 @@ export class GameEngine {
 
     if (newZone !== this.stats.zone) {
       this.stats.zone = newZone;
-      const zoneConf = ZONES[newZone];
-      this.zoneBanner = zoneConf.name;
+      this.zoneFlashTimer = 1.0;
+      this.zoneBanner = ZONES[newZone].name;
       this.zoneBannerTimer = 3.5;
-      this.zoneFlashTimer = 1.0; // 1-sec white fade flash on zone transition!
       soundEngine.playZoneWarp();
-      crazyGames.happyTime();
-
-      const zoneIndices: Record<ZoneId, number> = {
-        solar_system: 0,
-        asteroid_belt: 1,
-        dark_nebula: 2,
-        frozen_space: 3,
-        unknown_universe: 4,
-      };
-      soundEngine.setZoneTheme(zoneIndices[newZone]);
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // 2.5D PLATFORMS, STRUCTURES, CHECKPOINTS & BOSS ENCOUNTER LOGIC
+  // ---------------------------------------------------------------------------
+  private update2D5Platformer(dt: number) {
+    const scrollSpeed = (this.currentBoss && this.currentBoss.state !== 'defeated') ? 0 : this.gameSpeed;
+
+    // Scroll platforms & moving platform logic
+    for (let i = this.platforms.length - 1; i >= 0; i--) {
+      const p = this.platforms[i];
+      p.x -= scrollSpeed * dt;
+
+      if (p.isMoving && p.baseY) {
+        p.y = p.baseY + Math.sin(this.timeAlive * (p.moveSpeed || 1.5)) * (p.moveRange || 50);
+      }
+
+      if (p.x + p.width < -120) {
+        this.platforms.splice(i, 1);
+      }
+    }
+
+    // Scroll structures & check Checkpoint Beacon activation
+    for (let i = this.structures.length - 1; i >= 0; i--) {
+      const s = this.structures[i];
+      s.x -= scrollSpeed * dt;
+
+      if (s.type === 'checkpoint_beacon' && !s.isActive) {
+        if (Math.abs(this.earthX - s.x) < 80) {
+          s.isActive = true;
+          this.activeCheckpoint = {
+            chapter: this.currentChapter,
+            distance: Math.round(this.stats.distance),
+            health: Math.round(this.earthHealth),
+            shards: this.shardsCollectedThisRun,
+            timestamp: Date.now(),
+          };
+          StoryProgressionManager.saveCheckpoint(this.activeCheckpoint);
+          this.particles.emitEmpBlast(s.x, s.y);
+          this.addFloatingText('★ CHECKPOINT ACTIVATED! ★', this.earthX, this.earthY - 65, '#38bdf8', 1.3);
+          soundEngine.playRewardClaim();
+        }
+      }
+
+      if (s.x < -150) {
+        this.structures.splice(i, 1);
+      }
+    }
+
+    // Scroll NPCs
+    for (let i = this.npcs.length - 1; i >= 0; i--) {
+      const npc = this.npcs[i];
+      npc.x -= scrollSpeed * dt;
+      if (npc.x < -150) {
+        this.npcs.splice(i, 1);
+      }
+    }
+
+    // Maintain procedural platforms ahead
+    this.platformSpawnX -= scrollSpeed * dt;
+    if (this.platformSpawnX < CANVAS_VIRTUAL_WIDTH + 400) {
+      this.generatePlatformsAhead(CANVAS_VIRTUAL_WIDTH * 2.2);
+    }
+
+    // Story Mode Boss Encounter Trigger
+    if (this.mode === 'STORY_MODE' && !this.currentBoss) {
+      const chConfig = CHAPTERS[this.currentChapter];
+      if (chConfig) {
+        if (this.stats.distance >= chConfig.mainBossDistance) {
+          this.spawnBoss(this.currentChapter, false);
+        } else if (this.stats.distance >= chConfig.miniBossDistance && this.stats.distance < chConfig.miniBossDistance + 200) {
+          this.spawnBoss(this.currentChapter, true);
+        }
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // VANGUARD ESCORT SHIPS (Auto-fire lasers)
+  // ---------------------------------------------------------------------------
+  private updateVanguard(dt: number) {
+    const fireInterval = 0.55 / StoryProgressionManager.getVanguardFireRateMultiplier();
+    this.vanguardFireCooldown -= dt;
+
+    if (this.vanguardFireCooldown <= 0) {
+      this.vanguardFireCooldown = fireInterval;
+      // Spawn two laser bolts from escort ships
+      const vX = this.earthX - 10;
+      this.vanguardLasers.push({
+        id: `las_${Date.now()}_1`,
+        x: vX,
+        y: this.earthY - 48,
+        vx: 1200,
+        vy: 0,
+        damage: 35,
+        life: 1.0,
+      });
+      this.vanguardLasers.push({
+        id: `las_${Date.now()}_2`,
+        x: vX - 10,
+        y: this.earthY + 38,
+        vx: 1200,
+        vy: 0,
+        damage: 35,
+        life: 1.0,
+      });
+    }
+
+    // Update lasers
+    for (let i = this.vanguardLasers.length - 1; i >= 0; i--) {
+      const l = this.vanguardLasers[i];
+      l.x += l.vx * dt;
+      l.life -= dt;
+
+      // Hit Obstacles
+      let hit = false;
+      for (let j = this.obstacles.length - 1; j >= 0; j--) {
+        const obs = this.obstacles[j];
+        if (Math.hypot(l.x - obs.x, l.y - obs.y) < obs.radius + 15) {
+          this.particles.emitExplosion(obs.x, obs.y, '#38bdf8', 16);
+          this.obstacles.splice(j, 1);
+          this.stats.score += 150;
+          this.stats.obstaclesDodged++;
+          hit = true;
+          break;
+        }
+      }
+
+      // Hit Boss
+      if (!hit && this.currentBoss && this.currentBoss.state !== 'defeated') {
+        const b = this.currentBoss;
+        if (Math.hypot(l.x - b.x, l.y - b.y) < b.width / 2 + 10) {
+          b.health -= l.damage;
+          this.particles.emitExplosion(l.x, l.y, '#38bdf8', 12);
+          hit = true;
+          if (b.health <= 0) {
+            this.defeatBoss();
+          }
+        }
+      }
+
+      if (hit || l.life <= 0 || l.x > CANVAS_VIRTUAL_WIDTH + 60) {
+        this.vanguardLasers.splice(i, 1);
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // PUNCH TIMER
+  // ---------------------------------------------------------------------------
+  private updatePunch(dt: number) {
+    if (this.punch) {
+      this.punch.timer -= dt;
+      if (this.punch.timer <= 0) {
+        this.punch = null;
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // ELEMENTAL BOSS BATTLE AI & SPAWNING
+  // ---------------------------------------------------------------------------
+  public spawnBoss(chapter: ChapterId, isMini: boolean) {
+    const ch = CHAPTERS[chapter];
+    const name = isMini ? ch.miniBossName : ch.mainBossName;
+    const maxHP = isMini ? 450 : 1000;
+
+    this.currentBoss = {
+      id: `boss_${chapter}_${isMini ? 'mini' : 'main'}`,
+      name,
+      title: isMini ? 'Mini-Boss Guardian' : `${ch.element} World Behemoth`,
+      chapter,
+      isMiniBoss: isMini,
+      health: maxHP,
+      maxHealth: maxHP,
+      x: CANVAS_VIRTUAL_WIDTH - 180,
+      y: CANVAS_VIRTUAL_HEIGHT / 2,
+      targetY: CANVAS_VIRTUAL_HEIGHT / 2,
+      width: isMini ? 120 : 180,
+      height: isMini ? 120 : 180,
+      element: ch.element,
+      state: 'intro',
+      attackTimer: 2.0,
+      attackPattern: 1,
+      activeAttackName: 'Elemental Strike',
+    };
+
+    this.triggerScreenShake(0.6);
+    this.addFloatingText(`⚠ WARNING: ${name.toUpperCase()} APPROACHES! ⚠`, CANVAS_VIRTUAL_WIDTH / 2, 140, '#ef4444', 1.4);
+    soundEngine.playAtmosphereWarning();
+  }
+
+  private updateBoss(dt: number) {
+    if (!this.currentBoss || this.currentBoss.state === 'defeated') return;
+    const b = this.currentBoss;
+
+    // Smooth hover tracking
+    b.targetY = this.earthY + Math.sin(this.timeAlive * 2) * 80;
+    b.y += (b.targetY - b.y) * 2.0 * dt;
+    b.y = Math.max(120, Math.min(CANVAS_VIRTUAL_HEIGHT - 120, b.y));
+
+    // Boss Attack Timer
+    b.attackTimer -= dt;
+    if (b.attackTimer <= 0) {
+      b.attackTimer = b.isMiniBoss ? 2.6 : 2.0;
+      b.attackPattern = (b.attackPattern % 3) + 1;
+
+      // Boss fires elemental projectiles
+      const pColor = b.chapter === 2 ? '#38bdf8' : b.chapter === 3 ? '#ef4444' : b.chapter === 4 ? '#c084fc' : '#f59e0b';
+      this.obstacles.push({
+        id: `boss_proj_${Date.now()}`,
+        type: 'VOID_CRYSTAL',
+        x: b.x - 30,
+        y: b.y + (Math.random() - 0.5) * 60,
+        width: 32,
+        height: 32,
+        radius: 16,
+        vx: -380,
+        vy: (Math.random() - 0.5) * 80,
+        rotation: 0,
+        rotationSpeed: 3,
+        color: pColor,
+        glowColor: pColor,
+      });
+
+      this.particles.emitEmpBlast(b.x, b.y);
+      this.triggerScreenShake(0.25);
+    }
+  }
+
+  public defeatBoss() {
+    if (!this.currentBoss) return;
+    const b = this.currentBoss;
+    b.state = 'defeated';
+
+    this.particles.emitExplosion(b.x, b.y, '#fbbf24', 60);
+    this.triggerScreenShake(0.8);
+    soundEngine.playNewBest();
+
+    // Reward Cosmic Shards
+    const shardsGained = b.isMiniBoss ? 15 : 30;
+    StoryProgressionManager.addShards(shardsGained);
+    this.shardsCollectedThisRun += shardsGained;
+    this.addFloatingText(`★ ${b.name} DEFEATED! +${shardsGained} SHARDS ★`, CANVAS_VIRTUAL_WIDTH / 2, 160, '#fbbf24', 1.5);
+
+    // If Chapter Boss defeated, advance chapter
+    if (!b.isMiniBoss && this.mode === 'STORY_MODE') {
+      if (this.currentChapter < 6) {
+        this.currentChapter = (this.currentChapter + 1) as ChapterId;
+        this.addFloatingText(`UNLOCKED CHAPTER ${this.currentChapter}!`, CANVAS_VIRTUAL_WIDTH / 2, 220, '#38bdf8', 1.4);
+      } else {
+        this.addFloatingText(`★ CONGRATULATIONS! STORY COMPLETED! ★`, CANVAS_VIRTUAL_WIDTH / 2, 220, '#22c55e', 1.6);
+      }
+    }
+
+    setTimeout(() => {
+      this.currentBoss = null;
+    }, 1500);
   }
 
   private updatePowerUps(dt: number) {
@@ -769,9 +1354,9 @@ export class GameEngine {
     } else if (zone === 'asteroid_belt') {
       varietyPool.push('SMALL_ASTEROID', 'GIANT_ASTEROID', 'METEOR_SHOWER', 'SPACE_DEBRIS', 'ALIEN_MINE');
     } else if (zone === 'dark_nebula') {
-      varietyPool.push('COSMIC_STORM', 'GIANT_ASTEROID', 'ENERGY_BARRIER', 'METEOR_SHOWER', 'VOID_CRYSTAL', 'COSMIC_LEVIATHAN');
+      varietyPool.push('COSMIC_STORM', 'GIANT_ASTEROID', 'ENERGY_BARRIER', 'METEOR_SHOWER', 'VOID_CRYSTAL', 'COSMIC_LEVIATHAN', 'COLOSSAL_GUARDIAN');
     } else if (zone === 'frozen_space') {
-      varietyPool.push('COMET', 'GIANT_ASTEROID', 'ENERGY_BARRIER', 'METEOR_SHOWER', 'VOID_CRYSTAL', 'PULSAR_STAR');
+      varietyPool.push('COMET', 'GIANT_ASTEROID', 'ENERGY_BARRIER', 'METEOR_SHOWER', 'VOID_CRYSTAL', 'PULSAR_STAR', 'COLOSSAL_GUARDIAN');
     } else {
       varietyPool.push(
         'GRAVITATIONAL_ANOMALY',
@@ -780,7 +1365,8 @@ export class GameEngine {
         'METEOR_SHOWER',
         'PULSAR_STAR',
         'ANTIMATTER_VORTEX',
-        'COSMIC_LEVIATHAN'
+        'COSMIC_LEVIATHAN',
+        'COLOSSAL_GUARDIAN'
       );
     }
 
@@ -989,6 +1575,23 @@ export class GameEngine {
         rotation: 0,
         rotationSpeed: 0,
         color: '#14b8a6',
+      };
+    } else if (type === 'COLOSSAL_GUARDIAN') {
+      const radius = 48 + Math.random() * 12;
+      obs = {
+        id,
+        type,
+        x: spawnX + 60,
+        y: spawnY,
+        width: radius * 2.8,
+        height: radius * 2.6,
+        radius,
+        vx: -(this.gameSpeed * 0.7),
+        vy: (Math.random() - 0.5) * 30,
+        rotation: 0,
+        rotationSpeed: 0,
+        color: '#e2e8f0',
+        glowColor: '#38bdf8',
       };
     } else if (type === 'ANTIMATTER_VORTEX') {
       const radius = 36 + Math.random() * 14;
@@ -1316,7 +1919,7 @@ export class GameEngine {
     }
 
     // 3. Normal Collision Damage: 25-30 orange/red/white particles burst outward + 0.25s screen shake + brief flash
-    const damage = obs.type === 'GIANT_ASTEROID' ? 40 : obs.type === 'ANTIMATTER_VORTEX' || obs.type === 'COSMIC_LEVIATHAN' ? 35 : 25;
+    const damage = obs.type === 'GIANT_ASTEROID' || obs.type === 'COLOSSAL_GUARDIAN' ? 40 : obs.type === 'ANTIMATTER_VORTEX' || obs.type === 'COSMIC_LEVIATHAN' ? 35 : 25;
     this.earthHealth = Math.max(0, this.earthHealth - damage);
     this.stats.currentCombo = 0; // Reset combo
 
@@ -1326,7 +1929,7 @@ export class GameEngine {
     this.particles.emitExplosionBurst(this.earthX, this.earthY, this.equippedSkin, '#ef4444');
     soundEngine.playCollision();
 
-    if (obs.type !== 'GIANT_ASTEROID' && obs.type !== 'ENERGY_BARRIER' && obs.type !== 'COSMIC_LEVIATHAN') {
+    if (obs.type !== 'GIANT_ASTEROID' && obs.type !== 'ENERGY_BARRIER' && obs.type !== 'COSMIC_LEVIATHAN' && obs.type !== 'COLOSSAL_GUARDIAN') {
       this.obstacles.splice(obsIndex, 1);
     }
 
@@ -1380,25 +1983,36 @@ export class GameEngine {
     // 4. Render Particle Effects
     this.particles.render(this.ctx);
 
-    // 5. Render Planet Earth (Player) with Equipped Skin & Stamina Bar
-    renderEarth(this.ctx, {
-      x: this.earthX,
-      y: this.earthY,
-      radius: EARTH_RADIUS,
-      rotation: this.earthRotation,
-      cloudRotation: this.earthCloudRotation,
-      verticalTilt: this.earthVy / 300,
-      health: this.earthHealth,
-      jumpsRemaining: this.jumpsRemaining,
-      maxJumps: this.MAX_JUMPS,
-      isShielded: this.hasPowerUp('SHIELD'),
-      isBoosted: this.hasPowerUp('COSMIC_BOOST'),
-      isMagnetized: this.hasPowerUp('MAGNET'),
-      isPhasing: this.isPhasingActive(),
-      isHitFlash: this.isHitFlash,
-      time: this.timeAlive,
-      skin: this.equippedSkin,
-    });
+    // 2.5D Step A: Render Multi-Tier 3D Floating Platforms
+    PlatformerRenderer.renderPlatforms(this.ctx, this.platforms);
+
+    // 2.5D Step B: Render 3D Architectural Structures (Villages, Ancient Khandhar Ruins, Beacons)
+    PlatformerRenderer.renderStructures(this.ctx, this.structures, this.timeAlive);
+
+    // 2.5D Step C: Render 3D Cosmic NPCs
+    PlatformerRenderer.renderNpcs(this.ctx, this.npcs, this.timeAlive, this.earthX);
+
+    // 2.5D Step D: Render Active Elemental Chapter Boss or Mini-Boss
+    if (this.currentBoss) {
+      PlatformerRenderer.renderBoss(this.ctx, this.currentBoss, this.timeAlive);
+    }
+
+    // 2.5D Step E: Render Escort Vanguard Spaceship Lasers
+    PlatformerRenderer.renderVanguardLasers(this.ctx, this.vanguardLasers);
+
+    // 2.5D Step F: Render 3D Colossal Mecha-Titan Guardian + Earth (Hands / Solar Back-Holder)
+    PlatformerRenderer.renderGuardianAndEarth(
+      this.ctx,
+      this.earthX,
+      this.earthY,
+      this.isFistMode,
+      !this.isGrounded,
+      this.runPhase,
+      this.punch,
+      this.equippedSkin,
+      this.timeAlive,
+      this.hasPowerUp('SHIELD')
+    );
 
     // 6. Floor Anti-Cheat / Ground Hazard Warning Line
     const floorY = CANVAS_VIRTUAL_HEIGHT - 6;

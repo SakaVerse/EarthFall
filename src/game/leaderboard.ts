@@ -126,7 +126,7 @@ export class LeaderboardManager {
   }
 
   /**
-   * Saves score to Cloud Firestore with today's date (Asia/Kolkata IST) and CrazyGames leaderboard.
+   * Saves score to Cloud Firestore with today's date (Asia/Kolkata IST) and updates real-time ranks.
    */
   public static submitScore(
     score: number,
@@ -143,6 +143,34 @@ export class LeaderboardManager {
     const avatar = this.getSelectedAvatar();
     const country = this.getPlayerCountry();
 
+    // Immediately update local active real player entries for zero-lag instant UI update
+    const existingIdx = this.liveEntries.findIndex(
+      (e) => e.username.trim().toLowerCase() === nickname.trim().toLowerCase()
+    );
+
+    if (existingIdx !== -1) {
+      if (score > this.liveEntries[existingIdx].score) {
+        this.liveEntries[existingIdx].score = score;
+        this.liveEntries[existingIdx].zone = zoneName;
+        this.liveEntries[existingIdx].distance = distance;
+      }
+    } else {
+      this.liveEntries.push({
+        username: nickname,
+        score,
+        zone: zoneName,
+        date: this.activeDate,
+        avatar,
+        country,
+        distance,
+        survivalTime: roundDuration,
+      });
+    }
+
+    this.liveEntries.sort((a, b) => b.score - a.score);
+    this.notifySubscribers();
+
+    // Persist real score to Cloud Firestore
     CloudService.submitDailyScore(
       score,
       roundDuration,
@@ -157,12 +185,36 @@ export class LeaderboardManager {
   }
 
   /**
-   * Returns current daily leaderboard from Cloud Firestore sorted descending.
+   * Returns current daily leaderboard with ONLY real players who scored (no bots).
    */
   public static getLeaderboard(): LeaderboardEntry[] {
     const currentUsername = (this.getUsername() || '').trim().toLowerCase();
+    const botNames = new Set([
+      'astronova',
+      'voidrunner_x',
+      'cosmocaptain',
+      'stargazer_77',
+      'pulsardrifter',
+      'nebulaghost',
+      'solarisprime',
+      'orionhunter',
+      'zerog_pilot',
+      'terraecho',
+      'pilot_7426',
+    ]);
 
-    return this.liveEntries.map((entry, idx) => ({
+    // Strictly filter out any bots and only show real scored players
+    const realPlayers = this.liveEntries.filter(
+      (entry) =>
+        entry &&
+        entry.username &&
+        !botNames.has(entry.username.trim().toLowerCase()) &&
+        entry.score > 0
+    );
+
+    realPlayers.sort((a, b) => b.score - a.score);
+
+    return realPlayers.map((entry, idx) => ({
       ...entry,
       rank: idx + 1,
       isCurrentPlayer: currentUsername ? entry.username.trim().toLowerCase() === currentUsername : false,

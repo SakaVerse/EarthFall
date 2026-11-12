@@ -5,6 +5,20 @@
 
 import { CosmicEnergyOrb, Obstacle, PowerUpItem, ThemeId } from './types';
 import { POWER_UP_CONFIG } from './constants';
+import {
+  createLowPolyAsteroidMesh,
+  createLowPolySpaceshipMesh,
+  createLowPolyGuardianMesh,
+  createLowPolyCollectibleMesh,
+  renderLowPolyMesh,
+} from './lowPoly3D';
+
+// Pre-cached low-poly 3D meshes (Zero-GC in render loop)
+const smallAsteroidMesh = createLowPolyAsteroidMesh(false, 101);
+const giantAsteroidMesh = createLowPolyAsteroidMesh(true, 202);
+const spaceshipMesh = createLowPolySpaceshipMesh();
+const guardianMesh = createLowPolyGuardianMesh();
+const collectibleStarMesh = createLowPolyCollectibleMesh();
 
 export function renderObstacle(
   ctx: CanvasRenderingContext2D,
@@ -28,6 +42,9 @@ export function renderObstacle(
       break;
     case 'GIANT_ASTEROID':
       renderGiantAsteroid(ctx, obs, time, theme);
+      break;
+    case 'COLOSSAL_GUARDIAN':
+      renderColossalGuardian(ctx, obs, time);
       break;
     case 'METEOR_SHOWER':
       renderMeteor(ctx, obs, time);
@@ -93,123 +110,48 @@ function renderTelegraph(ctx: CanvasRenderingContext2D, obs: Obstacle, time: num
   ctx.restore();
 }
 
-function renderSmallAsteroid(ctx: CanvasRenderingContext2D, obs: Obstacle, theme?: ThemeId) {
-  const r = obs.radius;
-  ctx.save();
-
-  // Draw irregular polygon
-  if (obs.points && obs.points.length > 0) {
-    ctx.beginPath();
-    ctx.moveTo(obs.points[0].x, obs.points[0].y);
-    for (let i = 1; i < obs.points.length; i++) {
-      ctx.lineTo(obs.points[i].x, obs.points[i].y);
-    }
-    ctx.closePath();
-
-    const grad = ctx.createRadialGradient(-r * 0.3, -r * 0.3, 2, 0, 0, r);
-    if (theme === 'glacial') {
-      grad.addColorStop(0, '#e0f2fe');
-      grad.addColorStop(0.6, '#38bdf8');
-      grad.addColorStop(1, '#0369a1');
-    } else if (theme === 'solar') {
-      grad.addColorStop(0, '#fef08a');
-      grad.addColorStop(0.6, '#f97316');
-      grad.addColorStop(1, '#7f1d1d');
-    } else if (theme === 'cyberpunk') {
-      grad.addColorStop(0, '#06b6d4');
-      grad.addColorStop(0.6, '#0f172a');
-      grad.addColorStop(1, '#020617');
-    } else if (theme === 'void') {
-      grad.addColorStop(0, '#e879f9');
-      grad.addColorStop(0.6, '#6b21a8');
-      grad.addColorStop(1, '#1e1b4b');
-    } else {
-      grad.addColorStop(0, '#a8a29e');
-      grad.addColorStop(0.6, '#78716c');
-      grad.addColorStop(1, '#292524');
-    }
-
-    ctx.fillStyle = grad;
-    ctx.fill();
-
-    ctx.strokeStyle = theme === 'cyberpunk' ? '#f43f5e' : theme === 'solar' ? '#fbbf24' : theme === 'glacial' ? '#bae6fd' : theme === 'void' ? '#c084fc' : '#d6d3d1';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-
-    // Minor craters
-    ctx.fillStyle = theme === 'solar' ? '#b45309' : theme === 'glacial' ? '#0284c7' : '#44403c';
-    ctx.beginPath();
-    ctx.arc(-r * 0.25, -r * 0.15, r * 0.2, 0, Math.PI * 2);
-    ctx.arc(r * 0.2, r * 0.25, r * 0.16, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  ctx.restore();
+function renderSmallAsteroid(ctx: CanvasRenderingContext2D, obs: Obstacle, _theme?: ThemeId) {
+  renderLowPolyMesh(ctx, smallAsteroidMesh, {
+    x: 0,
+    y: 0,
+    scale: obs.radius,
+    rotX: obs.rotation * 0.7,
+    rotY: obs.rotation,
+    rotZ: obs.rotation * 0.3,
+    ambientLight: 0.35,
+    wireframeAlpha: 0.25,
+    cullBackfaces: true,
+  });
 }
 
-function renderGiantAsteroid(ctx: CanvasRenderingContext2D, obs: Obstacle, time: number, theme?: ThemeId) {
+function renderGiantAsteroid(ctx: CanvasRenderingContext2D, obs: Obstacle, _time: number, _theme?: ThemeId) {
+  renderLowPolyMesh(ctx, giantAsteroidMesh, {
+    x: 0,
+    y: 0,
+    scale: obs.radius,
+    rotX: obs.rotation * 0.5,
+    rotY: obs.rotation * 0.8,
+    rotZ: obs.rotation * 0.2,
+    ambientLight: 0.32,
+    wireframeAlpha: 0.3,
+    cullBackfaces: true,
+  });
+}
+
+function renderColossalGuardian(ctx: CanvasRenderingContext2D, obs: Obstacle, time: number) {
   const r = obs.radius;
-  ctx.save();
-
-  if (obs.points && obs.points.length > 0) {
-    ctx.beginPath();
-    ctx.moveTo(obs.points[0].x, obs.points[0].y);
-    for (let i = 1; i < obs.points.length; i++) {
-      ctx.lineTo(obs.points[i].x, obs.points[i].y);
-    }
-    ctx.closePath();
-
-    const grad = ctx.createRadialGradient(-r * 0.35, -r * 0.35, 5, 0, 0, r);
-    if (theme === 'glacial') {
-      grad.addColorStop(0, '#f0f9ff');
-      grad.addColorStop(0.5, '#0284c7');
-      grad.addColorStop(1, '#082f49');
-    } else if (theme === 'solar') {
-      grad.addColorStop(0, '#fef08a');
-      grad.addColorStop(0.5, '#ea580c');
-      grad.addColorStop(1, '#450a0a');
-    } else if (theme === 'cyberpunk') {
-      grad.addColorStop(0, '#ec4899');
-      grad.addColorStop(0.5, '#1e1b4b');
-      grad.addColorStop(1, '#020617');
-    } else if (theme === 'void') {
-      grad.addColorStop(0, '#f0abfc');
-      grad.addColorStop(0.5, '#581c87');
-      grad.addColorStop(1, '#0f051d');
-    } else {
-      grad.addColorStop(0, '#78716c');
-      grad.addColorStop(0.5, '#44403c');
-      grad.addColorStop(1, '#1c1917');
-    }
-
-    ctx.fillStyle = grad;
-    ctx.fill();
-
-    ctx.strokeStyle = theme === 'cyberpunk' ? '#06b6d4' : theme === 'solar' ? '#f59e0b' : theme === 'glacial' ? '#7dd3fc' : theme === 'void' ? '#d8b4fe' : '#a8a29e';
-    ctx.lineWidth = 2.5;
-    ctx.stroke();
-    // Glowing magma/crystal fissure cracks
-    ctx.save();
-    ctx.strokeStyle = theme === 'cyberpunk' ? 'rgba(6, 182, 212, 0.85)' : theme === 'glacial' ? 'rgba(56, 189, 248, 0.85)' : theme === 'void' ? 'rgba(232, 121, 249, 0.85)' : 'rgba(249, 115, 22, 0.85)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(-r * 0.5, -r * 0.2);
-    ctx.lineTo(-r * 0.1, 0);
-    ctx.lineTo(r * 0.3, -r * 0.3);
-    ctx.lineTo(r * 0.5, r * 0.1);
-    ctx.stroke();
-    ctx.restore();
-
-    // Craters
-    ctx.fillStyle = '#292524';
-    ctx.beginPath();
-    ctx.arc(-r * 0.2, r * 0.3, r * 0.22, 0, Math.PI * 2);
-    ctx.arc(r * 0.35, -r * 0.2, r * 0.18, 0, Math.PI * 2);
-    ctx.arc(-r * 0.4, -r * 0.3, r * 0.15, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  ctx.restore();
+  const wingFlap = Math.sin(time * 3.5) * 0.22;
+  renderLowPolyMesh(ctx, guardianMesh, {
+    x: 0,
+    y: 0,
+    scale: r * 0.88,
+    rotX: 0.15,
+    rotY: wingFlap,
+    rotZ: Math.sin(time * 2) * 0.08,
+    ambientLight: 0.42,
+    wireframeAlpha: 0.35,
+    cullBackfaces: true,
+  });
 }
 
 function renderMeteor(ctx: CanvasRenderingContext2D, obs: Obstacle, time: number) {
@@ -290,38 +232,17 @@ function renderComet(ctx: CanvasRenderingContext2D, obs: Obstacle, time: number)
 }
 
 function renderSpaceDebris(ctx: CanvasRenderingContext2D, obs: Obstacle, time: number) {
-  const r = obs.radius;
-  ctx.save();
-
-  // Metallic central chassis
-  ctx.fillStyle = '#64748b';
-  ctx.fillRect(-r * 0.6, -r * 0.6, r * 1.2, r * 1.2);
-
-  // Gold thermal insulation foil
-  ctx.fillStyle = '#eab308';
-  ctx.fillRect(-r * 0.4, -r * 0.4, r * 0.8, r * 0.8);
-
-  // Solar panel wings
-  ctx.fillStyle = '#1e3a8a';
-  ctx.strokeStyle = '#93c5fd';
-  ctx.lineWidth = 1;
-
-  // Left wing
-  ctx.fillRect(-r * 1.6, -r * 0.35, r * 0.9, r * 0.7);
-  ctx.strokeRect(-r * 1.6, -r * 0.35, r * 0.9, r * 0.7);
-
-  // Right wing
-  ctx.fillRect(r * 0.7, -r * 0.35, r * 0.9, r * 0.7);
-  ctx.strokeRect(r * 0.7, -r * 0.35, r * 0.9, r * 0.7);
-
-  // Flashing red emergency beacon
-  const beaconOn = Math.sin(time * 10) > 0;
-  ctx.fillStyle = beaconOn ? '#ef4444' : '#7f1d1d';
-  ctx.beginPath();
-  ctx.arc(0, -r * 0.6, 3, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.restore();
+  renderLowPolyMesh(ctx, spaceshipMesh, {
+    x: 0,
+    y: 0,
+    scale: obs.radius * 0.9,
+    rotX: Math.sin(time * 2.5) * 0.15,
+    rotY: obs.rotation,
+    rotZ: Math.sin(time * 1.8) * 0.1,
+    ambientLight: 0.38,
+    wireframeAlpha: 0.3,
+    cullBackfaces: true,
+  });
 }
 
 function renderEnergyBarrier(ctx: CanvasRenderingContext2D, obs: Obstacle, time: number) {
@@ -743,37 +664,31 @@ export function renderCosmicOrb(
 ) {
   ctx.save();
   const floatY = orb.y + Math.sin(time * 4 + orb.pulseTimer) * 6;
-  ctx.translate(orb.x, floatY);
-
   const pulse = 1 + Math.sin(time * 6 + orb.pulseTimer) * 0.15;
   const r = orb.radius * pulse;
 
-  // Luminous aura
-  const aura = ctx.createRadialGradient(0, 0, r * 0.2, 0, 0, r * 2.5);
-  aura.addColorStop(0, 'rgba(56, 189, 248, 0.85)');
-  aura.addColorStop(0.5, 'rgba(14, 165, 233, 0.3)');
+  // Luminous outer aura
+  const aura = ctx.createRadialGradient(orb.x, floatY, r * 0.2, orb.x, floatY, r * 2.2);
+  aura.addColorStop(0, 'rgba(56, 189, 248, 0.7)');
+  aura.addColorStop(0.5, 'rgba(14, 165, 233, 0.25)');
   aura.addColorStop(1, 'rgba(14, 165, 233, 0)');
-
   ctx.fillStyle = aura;
   ctx.beginPath();
-  ctx.arc(0, 0, r * 2.5, 0, Math.PI * 2);
+  ctx.arc(orb.x, floatY, r * 2.2, 0, Math.PI * 2);
   ctx.fill();
 
-  // Brilliant core
-  const coreGrad = ctx.createRadialGradient(0, 0, 1, 0, 0, r);
-  coreGrad.addColorStop(0, '#ffffff');
-  coreGrad.addColorStop(0.5, '#7dd3fc');
-  coreGrad.addColorStop(1, '#0284c7');
-
-  ctx.fillStyle = coreGrad;
-  ctx.beginPath();
-  ctx.arc(0, 0, r, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Sparkling star flare
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(-1, -r * 1.5, 2, r * 3);
-  ctx.fillRect(-r * 1.5, -1, r * 3, 2);
+  // Render Low-Poly 3D Tumbling Gemstone
+  renderLowPolyMesh(ctx, collectibleStarMesh, {
+    x: orb.x,
+    y: floatY,
+    scale: r * 1.15,
+    rotX: time * 2.2,
+    rotY: time * 3.4 + orb.pulseTimer,
+    rotZ: time * 1.6,
+    ambientLight: 0.5,
+    wireframeAlpha: 0.35,
+    cullBackfaces: true,
+  });
 
   ctx.restore();
 }

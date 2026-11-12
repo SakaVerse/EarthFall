@@ -19,7 +19,28 @@ export const UsernameModal: React.FC<UsernameModalProps> = ({ onComplete, initia
     const timer = setTimeout(() => {
       inputRef.current?.focus();
     }, 100);
-    return () => clearTimeout(timer);
+
+    // Native capture listener to guarantee S, W, Space, and all letters work flawlessly
+    const inputEl = inputRef.current;
+    const stopNative = (e: KeyboardEvent) => {
+      e.stopPropagation();
+      // Allow default input typing for all alphanumeric keys, space, backspace, etc.
+    };
+
+    if (inputEl) {
+      inputEl.addEventListener('keydown', stopNative, { capture: true });
+      inputEl.addEventListener('keypress', stopNative, { capture: true });
+      inputEl.addEventListener('keyup', stopNative, { capture: true });
+    }
+
+    return () => {
+      clearTimeout(timer);
+      if (inputEl) {
+        inputEl.removeEventListener('keydown', stopNative, { capture: true });
+        inputEl.removeEventListener('keypress', stopNative, { capture: true });
+        inputEl.removeEventListener('keyup', stopNative, { capture: true });
+      }
+    };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {

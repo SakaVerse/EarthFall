@@ -58,6 +58,7 @@ export type ObstacleType =
   | 'PULSAR_STAR'
   | 'ALIEN_MINE'
   | 'COSMIC_LEVIATHAN'
+  | 'COLOSSAL_GUARDIAN'
   | 'ANTIMATTER_VORTEX';
 
 export type SkillType = 'EMP_SHOCKWAVE' | 'PHASE_WARP' | 'RETRO_VENT';
@@ -106,6 +107,139 @@ export interface CosmicEnergyOrb {
   floatOffset: number;
 }
 
+export type GameMode = 'INFINITE_RUN' | 'STORY_MODE';
+
+export type ChapterId = 1 | 2 | 3 | 4 | 5 | 6;
+
+export interface ChapterConfig {
+  id: ChapterId;
+  title: string;
+  subtitle: string;
+  element: 'Gravity/Rock' | 'Cryo/Ice' | 'Pyro/Lava' | 'Storm/Lightning' | 'Acid/Bio' | 'Solar/Eclipse';
+  themeColor: string;
+  accentColor: string;
+  bgGradient: [string, string, string];
+  platformStyle: 'rock' | 'ice' | 'magma' | 'storm' | 'chitin' | 'solar';
+  lengthDistance: number;
+  miniBossName: string;
+  miniBossDistance: number;
+  mainBossName: string;
+  mainBossDistance: number;
+  loreIntro: string;
+  loreOutro: string;
+}
+
+export type PlatformType = 'rock' | 'ice' | 'magma' | 'storm' | 'chitin' | 'solar' | 'crumbling' | 'bounce';
+
+export interface Platform3D {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  type: PlatformType;
+  isMoving?: boolean;
+  moveRange?: number;
+  moveSpeed?: number;
+  baseY?: number;
+  isCrumbling?: boolean;
+  crumbleTimer?: number;
+  isFallen?: boolean;
+  hasSpring?: boolean;
+}
+
+export type StructureType =
+  | 'village_hut'
+  | 'energy_windmill'
+  | 'star_lantern'
+  | 'trading_stall'
+  | 'ruin_pillar'
+  | 'ruin_arch'
+  | 'lore_obelisk'
+  | 'checkpoint_beacon';
+
+export interface Structure3D {
+  id: string;
+  type: StructureType;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation?: number;
+  isActive?: boolean;
+  interactionText?: string;
+  customData?: any;
+}
+
+export type NpcType = 'oracle' | 'elder' | 'scholar' | 'merchant' | 'villager';
+
+export interface Npc3D {
+  id: string;
+  name: string;
+  title: string;
+  type: NpcType;
+  x: number;
+  y: number;
+  dialogue: string[];
+  merchantType?: 'star_forger' | 'chrono_architect' | 'aether_healer';
+}
+
+export interface BossEntity {
+  id: string;
+  name: string;
+  title: string;
+  chapter: ChapterId;
+  isMiniBoss: boolean;
+  health: number;
+  maxHealth: number;
+  x: number;
+  y: number;
+  targetY: number;
+  width: number;
+  height: number;
+  element: string;
+  state: 'intro' | 'attack' | 'stagger' | 'defeated';
+  attackTimer: number;
+  attackPattern: number;
+  activeAttackName: string;
+}
+
+export interface CheckpointData {
+  chapter: ChapterId;
+  distance: number;
+  health: number;
+  shards: number;
+  timestamp: number;
+}
+
+export interface UpgradeStats {
+  fistDamageLevel: number;
+  elementalResistLevel: number;
+  abilityCooldownLevel: number;
+  earthHullLevel: number;
+  aegisDurationLevel: number;
+  vanguardFireRateLevel: number;
+}
+
+export interface VanguardLaser {
+  id: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  damage: number;
+  life: number;
+}
+
+export interface FistPunch {
+  step: 1 | 2 | 3;
+  timer: number;
+  x: number;
+  y: number;
+  radius: number;
+  damage: number;
+}
+
 export interface PlayerStats {
   score: number;
   distance: number;
@@ -115,6 +249,9 @@ export interface PlayerStats {
   currentCombo: number;
   zone: ZoneId;
   scrapCollected?: number;
+  shardsCollected?: number;
+  mode?: GameMode;
+  chapter?: ChapterId;
 }
 
 export type ThemeId = 'default' | 'solar' | 'cyberpunk' | 'void' | 'glacial';

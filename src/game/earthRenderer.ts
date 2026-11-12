@@ -12,6 +12,26 @@
  */
 
 import { SkinItem } from './types';
+import {
+  createLowPolyEarthMesh,
+  createLowPolyCloudShellMesh,
+  createLowPolyMoonMesh,
+  renderLowPolyMesh,
+  LowPolyMesh,
+} from './lowPoly3D';
+
+// Pre-cached procedural low-poly meshes to guarantee zero garbage-collection in render loop
+const earthMeshCache = new Map<string, LowPolyMesh>();
+const cloudShellMesh = createLowPolyCloudShellMesh(2);
+const moonMesh = createLowPolyMoonMesh();
+
+function getCachedEarthMesh(skin?: SkinItem): LowPolyMesh {
+  const key = skin?.id || 'earth_classic';
+  if (!earthMeshCache.has(key)) {
+    earthMeshCache.set(key, createLowPolyEarthMesh(3, skin));
+  }
+  return earthMeshCache.get(key)!;
+}
 
 interface EarthRenderOptions {
   x: number;
@@ -399,157 +419,49 @@ function drawBaseEarth(
   isGhost: boolean,
   skin?: SkinItem
 ) {
+  const earthMesh = getCachedEarthMesh(skin);
+  const rotYRad = (rotation * Math.PI) / 180;
+  const cloudRotYRad = (cloudRotation * Math.PI) / 180;
+  const axialTiltRad = 0.41; // 23.5° realistic axial tilt
+
   ctx.save();
   ctx.beginPath();
   ctx.arc(0, 0, radius, 0, Math.PI * 2);
-  ctx.clip(); // Spherical Horizon Clipping
+  ctx.clip(); // Horizon circular clipping for smooth silhouette
 
-  // --- OCEAN BASE & BATHYMETRY ---
-  const oceanGrad = ctx.createRadialGradient(
-    -radius * 0.4,
-    -radius * 0.4,
-    radius * 0.05,
-    radius * 0.2,
-    radius * 0.2,
-    radius * 1.05
-  );
-  if (skin && skin.oceanColor) {
-    oceanGrad.addColorStop(0, skin.oceanColor);
-    oceanGrad.addColorStop(0.5, skin.oceanColor);
-    oceanGrad.addColorStop(1, '#050510');
-  } else {
-    // Specular sunlit azure to deep oceanic trenches
-    oceanGrad.addColorStop(0, '#0284c7'); // Sunlit tropical blue
-    oceanGrad.addColorStop(0.35, '#0369a1'); // Mid oceanic basin
-    oceanGrad.addColorStop(0.7, '#075985'); // Abyssal plain
-    oceanGrad.addColorStop(1, '#082f49'); // Deep sea trench
-  }
+  // 1. RENDER LOW-POLY 3D GEODESIC EARTH MESH
+  // Flat-shaded directional sun key light + ambient fill + rim lighting
+  renderLowPolyMesh(ctx, earthMesh, {
+    x: 0,
+    y: 0,
+    scale: radius,
+    rotY: rotYRad,
+    axialTilt: axialTiltRad,
+    ambientLight: 0.36,
+    wireframeAlpha: 0.2,
+    cullBackfaces: true,
+  });
 
-  ctx.fillStyle = oceanGrad;
-  ctx.fill();
+  // 2. RENDER LOW-POLY 3D CLOUD SHELL
+  // Independent cloud rotation with translucent atmospheric facets
+  ctx.save();
+  ctx.globalAlpha = 0.42;
+  renderLowPolyMesh(ctx, cloudShellMesh, {
+    x: 0,
+    y: 0,
+    scale: radius * 1.02,
+    rotY: cloudRotYRad,
+    axialTilt: axialTiltRad,
+    ambientLight: 0.55,
+    wireframeAlpha: 0.1,
+    cullBackfaces: true,
+  });
+  ctx.restore();
 
-  // --- CONTINENTS & SHALLOW REEF SHELVES ---
-  const rotRad = (rotation * Math.PI) / 180;
+  // 3. NIGHT-SIDE ANTHROPIC CITY LIGHTS & POLAR AURORAS
+  drawCityLightsAndAuroras(ctx, radius, rotYRad, time);
 
-  for (const land of DETAILED_LANDMASSES) {
-    const lonRad = ((land.lon % 360) * Math.PI) / 180 + rotRad;
-    const latRad = (land.lat * Math.PI) / 180;
-
-    const nx = Math.cos(latRad) * Math.sin(lonRad);
-    const ny = -Math.sin(latRad);
-    const nz = Math.cos(latRad) * Math.cos(lonRad);
-
-    if (nz > -0.15) {
-      const px = nx * radius;
-      const py = ny * radius;
-      const scaleX = Math.max(0.18, nz);
-      const rx = (land.rx / 100) * radius * scaleX;
-      const ry = (land.ry / 100) * radius;
-
-      ctx.save();
-      ctx.translate(px, py);
-      ctx.rotate(land.rot);
-
-      // A. Turquoise Continental Shelf Margin (Coastal Reefs)
-      if (land.type !== 2 && nz > 0.1) {
-        ctx.fillStyle = 'rgba(14, 165, 233, 0.4)';
-        ctx.beginPath();
-        ctx.ellipse(0, 0, rx * 1.35, ry * 1.35, 0, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      // B. Landmass Core Palette
-      if (skin && skin.continentColor) {
-        ctx.fillStyle = land.type === 2 ? '#f8fafc' : skin.continentColor;
-      } else if (land.type === 2) {
-        // Polar Ice Cap
-        ctx.fillStyle = '#f8fafc';
-      } else if (land.type === 1) {
-        // Desert Ochre / Sahara / Outback
-        ctx.fillStyle = '#ca8a04';
-      } else if (land.type === 3) {
-        // Mountain Granite
-        ctx.fillStyle = '#64748b';
-      } else {
-        // Lush Vegetation & Rainforest
-        ctx.fillStyle = '#15803d';
-      }
-
-      ctx.beginPath();
-      ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      // C. Internal Biome & Topography Variation
-      if (land.type === 0 && nz > 0.3) {
-        // Deep rainforest heart
-        ctx.fillStyle = '#14532d';
-        ctx.beginPath();
-        ctx.ellipse(-rx * 0.15, -ry * 0.15, rx * 0.65, ry * 0.65, 0, 0, Math.PI * 2);
-        ctx.fill();
-      } else if (land.type === 3 && nz > 0.25) {
-        // Mountain snow-capped ridges
-        ctx.fillStyle = '#f1f5f9';
-        ctx.beginPath();
-        ctx.ellipse(-rx * 0.1, -ry * 0.2, rx * 0.35, ry * 0.4, 0.3, 0, Math.PI * 2);
-        ctx.fill();
-      } else if (land.type === 1 && nz > 0.3) {
-        // Sand dune crest
-        ctx.fillStyle = '#eab308';
-        ctx.beginPath();
-        ctx.ellipse(rx * 0.1, ry * 0.1, rx * 0.5, ry * 0.5, -0.2, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      ctx.restore();
-    }
-  }
-
-  // --- DYNAMIC CLOUDS & CLOUD SHADOWS ---
-  const cloudRotRad = (cloudRotation * Math.PI) / 180;
-  drawRealisticClouds(ctx, radius, cloudRotRad, time);
-
-  // --- DAY/NIGHT TERMINATOR SHADOW ---
-  // Sunlight originates from the upper-left (sun direction).
-  const shadowGrad = ctx.createRadialGradient(
-    radius * 0.5,
-    radius * 0.45,
-    radius * 0.15,
-    0,
-    0,
-    radius
-  );
-  shadowGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
-  shadowGrad.addColorStop(0.45, 'rgba(2, 6, 23, 0.25)');
-  shadowGrad.addColorStop(0.7, 'rgba(2, 6, 23, 0.65)');
-  shadowGrad.addColorStop(1, 'rgba(2, 6, 23, 0.94)'); // Pitch black night vacuum
-
-  ctx.fillStyle = shadowGrad;
-  ctx.beginPath();
-  ctx.arc(0, 0, radius, 0, Math.PI * 2);
-  ctx.fill();
-
-  // --- NIGHT-SIDE ANTHROPIC CITY LIGHTS & AURORAS ---
-  drawCityLightsAndAuroras(ctx, radius, rotRad, time);
-
-  // --- SPECULAR OCEAN SUN GLINT ---
-  const sunGlint = ctx.createRadialGradient(
-    -radius * 0.45,
-    -radius * 0.45,
-    1,
-    -radius * 0.42,
-    -radius * 0.42,
-    radius * 0.45
-  );
-  sunGlint.addColorStop(0, 'rgba(255, 255, 255, 0.65)');
-  sunGlint.addColorStop(0.3, 'rgba(186, 230, 253, 0.25)');
-  sunGlint.addColorStop(1, 'rgba(255, 255, 255, 0)');
-
-  ctx.fillStyle = sunGlint;
-  ctx.beginPath();
-  ctx.arc(0, 0, radius, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Damage Distress / Red Flash
+  // 4. DAMAGE DISTRESS / RED HIT FLASH
   if (isHitFlash) {
     ctx.fillStyle = 'rgba(239, 68, 68, 0.65)';
     ctx.beginPath();
@@ -557,7 +469,7 @@ function drawBaseEarth(
     ctx.fill();
   }
 
-  // Biosphere Depletion Tone
+  // 5. BIOSPHERE DEPLETION TONE (< 40% Health)
   if (health < 40) {
     const dangerAlpha = ((40 - health) / 40) * 0.35;
     ctx.fillStyle = `rgba(220, 38, 38, ${dangerAlpha})`;
@@ -566,12 +478,12 @@ function drawBaseEarth(
     ctx.fill();
   }
 
-  // Special Skin Features & Custom Procedural Surface Patterns
+  // 6. SPECIAL SKIN PROCEDURAL HIGHLIGHTS
   drawSpecialSkinFeatures(ctx, radius, rotation, time, skin);
 
   ctx.restore(); // End clipping
 
-  // --- ATMOSPHERIC LIMB CRESCENT ---
+  // 7. ATMOSPHERIC LIMB CRESCENT
   ctx.save();
   ctx.lineWidth = 2.5;
   ctx.strokeStyle = isGhost ? '#818cf8' : 'rgba(186, 230, 253, 0.85)';
@@ -977,42 +889,27 @@ function drawCityLightsAndAuroras(
 
 function drawDetailedMoon(ctx: CanvasRenderingContext2D, x: number, y: number, r: number) {
   ctx.save();
-  ctx.translate(x, y);
 
-  // Soft lunar halo
-  const glow = ctx.createRadialGradient(0, 0, r * 0.4, 0, 0, r * 1.8);
+  // 1. Soft lunar halo
+  const glow = ctx.createRadialGradient(x, y, r * 0.4, x, y, r * 1.8);
   glow.addColorStop(0, 'rgba(226, 232, 240, 0.35)');
   glow.addColorStop(1, 'rgba(226, 232, 240, 0)');
   ctx.fillStyle = glow;
   ctx.beginPath();
-  ctx.arc(0, 0, r * 1.8, 0, Math.PI * 2);
+  ctx.arc(x, y, r * 1.8, 0, Math.PI * 2);
   ctx.fill();
 
-  // Moon base with spherical lighting
-  const moonGrad = ctx.createRadialGradient(-r * 0.35, -r * 0.35, 2, 0, 0, r);
-  moonGrad.addColorStop(0, '#f8fafc');
-  moonGrad.addColorStop(0.5, '#cbd5e1');
-  moonGrad.addColorStop(0.9, '#475569');
-  moonGrad.addColorStop(1, '#1e293b');
-
-  ctx.fillStyle = moonGrad;
-  ctx.beginPath();
-  ctx.arc(0, 0, r, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Lunar Maria (Dark basaltic plains)
-  ctx.fillStyle = '#334155';
-  ctx.beginPath();
-  ctx.ellipse(-r * 0.25, -r * 0.15, r * 0.3, r * 0.22, 0.2, 0, Math.PI * 2); // Sea of Tranquility
-  ctx.ellipse(r * 0.25, r * 0.2, r * 0.25, r * 0.18, -0.3, 0, Math.PI * 2); // Oceanus Procellarum
-  ctx.ellipse(-r * 0.1, r * 0.35, r * 0.18, r * 0.15, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Ray crater Tycho
-  ctx.fillStyle = '#f1f5f9';
-  ctx.beginPath();
-  ctx.arc(-r * 0.2, -r * 0.1, r * 0.1, 0, Math.PI * 2);
-  ctx.fill();
+  // 2. Render Low-Poly 3D Moon Mesh
+  renderLowPolyMesh(ctx, moonMesh, {
+    x,
+    y,
+    scale: r,
+    rotY: x * 0.05,
+    rotX: 0.18,
+    ambientLight: 0.3,
+    wireframeAlpha: 0.22,
+    cullBackfaces: true,
+  });
 
   ctx.restore();
 }
